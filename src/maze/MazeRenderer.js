@@ -8,11 +8,10 @@ export class MazeRenderer {
         this.walls = [];
     }
 
-    render(mazeData) {
+    render(mazeData, difficulty = 'medium') {  // Add difficulty parameter with default
         this.clearMaze();
         
         console.log('Rendering maze with size:', mazeData.size);
-        console.log('Maze grid sample:', mazeData.grid.slice(0, 3).map(row => row.slice(0, 3)));
         
         // Create ground
         this.createGround(mazeData.size);
@@ -23,8 +22,8 @@ export class MazeRenderer {
         // Create exit portal
         this.createExitPortal(mazeData.end, mazeData.size);
         
-        // Add some random items
-        this.populateMaze(mazeData);
+        // Add enemies, items, and traps - PASS DIFFICULTY
+        this.populateMaze(mazeData, difficulty);
         
         console.log('Maze rendering complete. Total walls:', this.walls.length);
     }
@@ -157,6 +156,169 @@ export class MazeRenderer {
             this.scene.add(itemLight);
             
             console.log(`Placed ${item.type} at:`, { x: posX, z: posZ });
+        }
+    }
+
+    // pop enimies
+   // In MazeRenderer.js - fix the placeEnemies method
+    placeEnemies(mazeData, difficulty) {
+        const enemyTypes = this.getEnemyTypesForDifficulty(difficulty);
+        const availableSpots = this.findAvailableSpots(mazeData);
+        
+        // Shuffle spots for random placement
+        this.shuffleArray(availableSpots);
+        
+        let spotIndex = 0;
+        
+        // Use Object.entries to iterate over the enemyTypes object
+        Object.entries(enemyTypes).forEach(([enemyType, count]) => {
+            for (let i = 0; i < count && spotIndex < availableSpots.length; i++) {
+                const spot = availableSpots[spotIndex++];
+                const position = new THREE.Vector3(
+                    spot.x - mazeData.size/2,
+                    0.5,
+                    spot.z - mazeData.size/2
+                );
+                
+                // Just log for now - GameScene will handle actual enemy creation
+                console.log(` Placing ${enemyType} at grid (${spot.x}, ${spot.z})`);
+                // Enemy creation will be handled by GameScene
+            }
+        });
+        
+        console.log(`Placed enemies: ${JSON.stringify(enemyTypes)}`);
+    }
+
+// Also update the populateMaze method to accept difficulty
+populateMaze(mazeData, difficulty) {
+    this.placeEnemies(mazeData, difficulty);
+    this.placeItems(mazeData);
+    this.placeTraps(mazeData, difficulty);
+}
+
+    placeItems(mazeData) {
+        const itemTypes = ['flashlight', 'trenchcoat', 'carrot', 'note'];
+        const availableSpots = this.findAvailableSpots(mazeData);
+        
+        this.shuffleArray(availableSpots);
+        
+        // Place one of each item type
+        itemTypes.forEach((itemType, index) => {
+            if (index < availableSpots.length) {
+                const spot = availableSpots[index];
+                const position = new THREE.Vector3(
+                    spot.x - mazeData.size/2,
+                    0.2,
+                    spot.z - mazeData.size/2
+                );
+                
+                console.log(`Placing ${itemType} at grid (${spot.x}, ${spot.z})`);
+                // Item creation will be handled by GameScene
+            }
+        });
+    }
+
+    placeTraps(mazeData, difficulty) {
+    const trapCount = this.getTrapCount(difficulty);
+    const availableSpots = this.findAvailableSpots(mazeData);
+    
+    this.shuffleArray(availableSpots);
+    
+    for (let i = 0; i < trapCount && i < availableSpots.length; i++) {
+        const spot = availableSpots[i];
+        
+        // Trap visualization
+        const trapGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.1, 8);
+        const trapMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xff0000,
+            transparent: true,
+            opacity: 0.7,
+            visible: true
+        });
+        
+        const trap = new THREE.Mesh(trapGeometry, trapMaterial);
+        trap.position.set(
+            spot.x - mazeData.size/2,
+            0.05,
+            spot.z - mazeData.size/2
+        );
+        trap.userData = { 
+            isTrap: true, 
+            damage: this.getTrapDamage(difficulty),
+            type: 'trap',
+            triggered: false
+        };
+        this.scene.add(trap);
+        this.walls.push(trap);
+        
+        // FIXED: Better physics trap setup
+        const trapBodyDesc = RAPIER.RigidBodyDesc.fixed();
+        const trapBody = this.world.createRigidBody(trapBodyDesc);
+        trapBody.setTranslation({
+            x: trap.position.x,
+            y: 0.05,
+            z: trap.position.z
+        });
+        
+        // Use a thinner collider that's definitely a sensor
+        const trapCollider = RAPIER.ColliderDesc.cuboid(0.3, 0.02, 0.3); // Thinner
+        trapCollider.setSensor(true); // Important: sensor doesn't generate contact forces
+        trapCollider.setRestitution(0.0); // No bounce
+        trapCollider.setFriction(0.0); // No friction
+        
+        const trapPhysicsCollider = this.world.createCollider(trapCollider, trapBody);
+        trap.userData.physicsCollider = trapPhysicsCollider;
+        
+        console.log(`⚠️ Placed trap at (${spot.x}, ${spot.z})`);
+    }
+}
+    // Helper methods
+    findAvailableSpots(mazeData) {
+        const spots = [];
+        for (let z = 0; z < mazeData.grid.length; z++) {
+            for (let x = 0; x < mazeData.grid[z].length; x++) {
+                if (mazeData.grid[z][x] === 0 && 
+                    !(x === mazeData.start.x && z === mazeData.start.z) &&
+                    !(x === mazeData.end.x && z === mazeData.end.z)) {
+                    spots.push({ x, z });
+                }
+            }
+        }
+        return spots;
+    }
+
+    getEnemyTypesForDifficulty(difficulty) {
+        const enemyPools = {
+            easy: { 'spider': 2, 'rat': 1 },
+            medium: { 'spider': 3, 'rat': 2, 'glowing_spider': 1 },
+            hard: { 'spider': 4, 'rat': 3, 'zombie': 2, 'glowing_rat': 1, 'glowing_human': 1 }
+        };
+        return enemyPools[difficulty] || enemyPools.easy;
+    }
+
+    getEnemyCounts(difficulty, maxSpots) {
+        const counts = {
+            easy: Math.min(3, Math.floor(maxSpots * 0.1)),
+            medium: Math.min(6, Math.floor(maxSpots * 0.15)),
+            hard: Math.min(10, Math.floor(maxSpots * 0.2))
+        };
+        return counts[difficulty] || counts.easy;
+    }
+
+    getTrapCount(difficulty) {
+        const counts = { easy: 2, medium: 4, hard: 6 };
+        return counts[difficulty] || counts.easy;
+    }
+
+    getTrapDamage(difficulty) {
+        const damages = { easy: 3, medium: 3, hard: 7 };
+        return damages[difficulty] || damages.easy;
+    }
+
+    shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
         }
     }
 }

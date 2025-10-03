@@ -1,13 +1,17 @@
 import * as THREE from 'three';
 
+
 export class FogOfWar {
-    constructor(scene, mazeData) {
+    constructor(scene, mazeData, gameManager = null) {
         this.scene = scene;
         this.mazeData = mazeData;
+        this.gameManager = gameManager; // Store reference to gameManager
         this.discoveredAreas = new Set();
         this.fogMaterial = null;
         this.fogMeshes = [];
-        this.discoveryRadius = 1;
+        this.baseDiscoveryRadius = 1;
+        this.discoveryRadius = this.baseDiscoveryRadius;
+
         
         this.init();
     }
@@ -34,7 +38,7 @@ export class FogOfWar {
                 // Only add fog where there are paths (not walls)
                 if (this.mazeData.grid[z][x] === 0) {
                     const fogMesh = new THREE.Mesh(fogGeometry, this.fogMaterial);
-                    fogMesh.position.set(x - mazeSize/2, 1, z - mazeSize/2);
+                    fogMesh.position.set(x - mazeSize/2, -1, z - mazeSize/2);
                     fogMesh.rotation.x = -Math.PI / 2; // Make it horizontal
                     fogMesh.userData = { x, z, discovered: false };
                     this.scene.add(fogMesh);
@@ -49,6 +53,12 @@ export class FogOfWar {
     update(playerPosition) {
         const playerGridX = Math.round(playerPosition.x + this.mazeData.size/2);
         const playerGridZ = Math.round(playerPosition.z + this.mazeData.size/2);
+
+        if (this.gameManager && this.gameManager.flashlightActive) {
+            this.discoveryRadius = this.baseDiscoveryRadius + this.gameManager.visibilityBoost;
+        } else {
+            this.discoveryRadius = this.baseDiscoveryRadius;
+        }
         
         this.fogMeshes.forEach(fogMesh => {
             const { x, z } = fogMesh.userData;
@@ -67,6 +77,12 @@ export class FogOfWar {
                 fogMesh.material.opacity = opacity;
             }
         });
+
+        // Debug flashlight state
+        if (Math.random() < 0.05) { // 5% chance per frame
+            console.log(`🔦 Flashlight: ${this.gameManager?.flashlightActive ? 'ON' : 'OFF'}, Radius: ${this.discoveryRadius.toFixed(1)}`);
+        }
+    
     }
     
     clear() {

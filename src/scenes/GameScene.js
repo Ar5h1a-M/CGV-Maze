@@ -19,9 +19,15 @@ export class GameScene {
         this.clock = new THREE.Clock();
         this.camera = null;
         this.renderer = null;
-        this.fogOfWar = null; // Add this
+        this.fogOfWar = null; //add fog
+        //enemies +items
+        this.enemies = [];
+        this.items = [];
+        this.traps = [];
+        this.portal = null;
     }
     
+    // In GameScene.init method
     async init(gameManager, uiManager, renderer = null) {
         this.gameManager = gameManager;
         this.uiManager = uiManager;
@@ -30,7 +36,7 @@ export class GameScene {
         // Create scene
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x0a0a0a);
-        this.scene.fog = new THREE.Fog(0x0a0a0a, 1, 5); // Reduced fog distance for creepiness
+        this.scene.fog = new THREE.Fog(0x0a0a0a, 1, 5);
         
         // Create camera
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -40,19 +46,25 @@ export class GameScene {
         // Setup physics world
         this.setupPhysics();
         
-        // Setup lighting (make it darker for creepiness)
+        // Setup lighting
         this.setupLighting();
         
         // Generate maze
         this.mazeGenerator = new MazeGenerator(this.gameManager.currentDifficulty);
         const mazeData = this.mazeGenerator.generate();
         
-        // Render maze
+        // Render maze - PASS DIFFICULTY
         this.mazeRenderer = new MazeRenderer(this.scene, this.world);
-        this.mazeRenderer.render(mazeData);
+        this.mazeRenderer.render(mazeData, this.gameManager.currentDifficulty); // Add difficulty here
         
-        // Create fog of war
-        this.fogOfWar = new FogOfWar(this.scene, mazeData);
+        // Create fog of war - PASS GAMEMANAGER
+        this.fogOfWar = new FogOfWar(this.scene, mazeData, this.gameManager);
+        
+        // POPULATE WITH ENEMIES AND ITEMS
+        this.populateGameWorld(mazeData);
+
+        // Setup flashlight effect
+        this.setupFlashlightEffect();
         
         // Create player
         this.player = new Player(this.scene, this.world, this.gameManager, this.renderer);
@@ -65,8 +77,240 @@ export class GameScene {
         // Start game loop
         this.clock.start();
         
-        console.log('GameScene initialized with fog of war');
+        console.log('GameScene initialized with enemies and items');
     }
+
+    // pop enimeies+items
+    populateGameWorld(mazeData) {
+        this.spawnEnemies(mazeData);
+        this.spawnItems(mazeData);
+        this.setupPortal(mazeData);
+    }
+
+    //////////eniemie+item methods/////
+
+    async spawnEnemies(mazeData) {
+        const { Enemy } = await import('../entities/Enemy.js');
+        const enemyTypes = this.getEnemyTypesForDifficulty();
+        const availableSpots = this.findAvailableSpots(mazeData);
+        
+        this.shuffleArray(availableSpots);
+        
+        let spotIndex = 0;
+        Object.entries(enemyTypes).forEach(([enemyType, count]) => {
+            for (let i = 0; i < count && spotIndex < availableSpots.length; i++) {
+                const spot = availableSpots[spotIndex++];
+                const position = new THREE.Vector3(
+                    spot.x - mazeData.size/2,
+                    0.5,
+                    spot.z - mazeData.size/2
+                );
+                
+                const enemy = new Enemy(
+                    this.scene, 
+                    this.world, 
+                    enemyType, 
+                    this.gameManager.currentDifficulty,
+                    position
+                );
+                this.enemies.push(enemy);
+            }
+        });
+        
+        console.log(`Spawned ${this.enemies.length} enemies`);
+    }
+
+    async spawnItems(mazeData) {
+        const { Item } = await import('../entities/Item.js');
+        const itemTypes = ['flashlight', 'trenchcoat', 'carrot', 'note'];
+        const availableSpots = this.findAvailableSpots(mazeData);
+        
+        this.shuffleArray(availableSpots);
+        
+        itemTypes.forEach((itemType, index) => {
+            if (index < availableSpots.length) {
+                const spot = availableSpots[index];
+                const position = new THREE.Vector3(
+                    spot.x - mazeData.size/2,
+                    0.2,
+                    spot.z - mazeData.size/2
+                );
+                
+                const item = new Item(this.scene, itemType, position);
+                this.items.push(item);
+            }
+        });
+        
+        console.log(`Spawned ${this.items.length} items`);
+    }
+
+    setupPortal(mazeData) {
+        // Win condition portal
+        const portalGeometry = new THREE.CylinderGeometry(1, 1, 3, 16);
+        const portalMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0x888888,
+            transparent: true,
+            opacity: 0.7
+        });
+        
+        this.portal = new THREE.Mesh(portalGeometry, portalMaterial);
+        this.portal.position.set(
+            mazeData.end.x - mazeData.size/2,
+            1.5,
+            mazeData.end.z - mazeData.size/2
+        );
+        this.portal.userData = { isPortal: true };
+        this.scene.add(this.portal);
+        
+        // Portal light
+        const portalLight = new THREE.PointLight(0x888888, 2, 10);
+        portalLight.position.copy(this.portal.position);
+        this.scene.add(portalLight);
+        
+        // Portal physics (sensor)
+        const portalBodyDesc = RAPIER.RigidBodyDesc.fixed();
+        const portalBody = this.world.createRigidBody(portalBodyDesc);
+        portalBody.setTranslation(this.portal.position);
+        const portalCollider = RAPIER.ColliderDesc.cylinder(1.5, 1);
+        portalCollider.setSensor(true);
+        this.world.createCollider(portalCollider, portalBody);
+    }
+
+
+
+    // Add helper methods for GameScene
+    checkItemCollection() {
+        if (!this.player || !this.player.mesh) return;
+        
+        this.items = this.items.filter(item => {
+            if (item.isNearPlayer(this.player.mesh.position) && !item.isCollected) {
+                const collectedItem = item.collect();
+                if (collectedItem && this.gameManager.addToInventory(collectedItem)) {
+                    console.log(`🎒 Added ${collectedItem.type} to inventory`);
+                    return false; // Remove from array
+                }
+            }
+            return true; // Keep in array
+        });
+    }
+
+    checkEnemyAttacks() {
+        if (!this.player || !this.player.mesh) return;
+        
+        this.enemies.forEach(enemy => {
+            if (enemy.isAlive && enemy.isInAttackRange(this.player.mesh.position)) {
+                enemy.attack(this.player);
+            }
+        });
+    }
+
+checkTrapCollisions() {
+    if (!this.player || !this.player.mesh) return;
+    
+    const playerPos = this.player.mesh.position;
+    let trapTriggered = false;
+    
+    // Check all walls for traps
+    this.mazeRenderer.walls.forEach(wall => {
+        if (wall.userData && wall.userData.isTrap && !wall.userData.triggered) {
+            const distance = playerPos.distanceTo(wall.position);
+            
+            if (distance < 0.8) { // Trap trigger distance
+                this.triggerTrap(wall);
+                trapTriggered = true;
+                
+                // ADD: Small knockback effect but DON'T interfere with movement
+                if (this.player.body) {
+                    const currentVel = this.player.body.linvel();
+                    // Only apply slight vertical knockback, preserve horizontal movement
+                    this.player.body.setLinvel({
+                        x: currentVel.x,  // Keep current horizontal velocity
+                        y: 2,             // Small upward knockback
+                        z: currentVel.z   // Keep current horizontal velocity
+                    }, true);
+                }
+            }
+        }
+    });
+}
+
+triggerTrap(trap) {
+    if (trap.userData.triggered) return;
+    
+    trap.userData.triggered = true;
+    const damage = trap.userData.damage;
+    
+    console.log(`💥 Trap triggered! Damage: ${damage}`);
+    
+    // Apply damage to player WITHOUT affecting movement
+    if (this.player) {
+        this.player.takeDamage(damage);
+    }
+    
+    // Visual feedback
+    trap.material.color.set(0xffff00);
+    
+    // Reset after cooldown
+    setTimeout(() => {
+        trap.material.color.set(0xff0000);
+        trap.userData.triggered = false;
+    }, 2000);
+}
+
+    checkPortalWin() {
+        if (!this.player || !this.player.mesh || !this.portal) return;
+        
+        const distance = this.player.mesh.position.distanceTo(this.portal.position);
+        if (distance < 2.0) {
+            this.winGame();
+        }
+    }
+
+    winGame() {
+        console.log('🎉 Player reached the portal! Level completed!');
+        this.gameManager.winGame();
+        
+        // Show win message
+        setTimeout(() => {
+            alert('Congratulations! You escaped the maze!');
+            this.gameManager.sceneManager.switchToScene('menu');
+        }, 1000);
+    }
+
+    // Helper methods
+    getEnemyTypesForDifficulty() {
+        const difficulty = this.gameManager.currentDifficulty;
+        const enemyPools = {
+            easy: { 'spider': 2, 'rat': 1 },
+            medium: { 'spider': 3, 'rat': 2, 'glowing_spider': 1 },
+            hard: { 'spider': 4, 'rat': 3, 'zombie': 2, 'glowing_rat': 1, 'glowing_human': 1 }
+        };
+        return enemyPools[difficulty] || enemyPools.easy;
+    }
+
+    findAvailableSpots(mazeData) {
+        const spots = [];
+        for (let z = 0; z < mazeData.grid.length; z++) {
+            for (let x = 0; x < mazeData.grid[z].length; x++) {
+                if (mazeData.grid[z][x] === 0 && 
+                    !(x === mazeData.start.x && z === mazeData.start.z) &&
+                    !(x === mazeData.end.x && z === mazeData.end.z)) {
+                    spots.push({ x, z });
+                }
+            }
+        }
+        return spots;
+    }
+
+    shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+    }
+
+    //////////eniemie+item methods/////
+
 
     setupPhysics() {
         const gravity = { x: 0.0, y: -9.81, z: 0.0 };
@@ -89,7 +333,18 @@ export class GameScene {
         creepyLight.position.set(10, 5, 10);
         this.scene.add(creepyLight);
     }
-    
+
+    setupFlashlightEffect() {
+        // Create a spotlight that follows the camera when flashlight is on
+        this.flashlight = new THREE.SpotLight(0xffffcc, 1, 15, Math.PI / 4, 0.5, 1);
+        this.flashlight.position.set(0, 0, 0);
+        this.flashlight.target.position.set(0, 0, -1);
+        this.flashlight.visible = false;
+        this.camera.add(this.flashlight);
+        this.camera.add(this.flashlight.target);
+    }
+
+     // Update method to handle enemies and items
     update() {
         const deltaTime = this.clock.getDelta();
         
@@ -102,11 +357,39 @@ export class GameScene {
         if (this.player) {
             this.player.update(deltaTime);
             
-            // Update fog of war based on player position
+            // Update fog of war
             if (this.fogOfWar && this.player.mesh) {
                 this.fogOfWar.update(this.player.mesh.position);
             }
+            
+            // Check for item collection
+            this.checkItemCollection();
+            
+            // Check for enemy attacks
+            this.checkEnemyAttacks();
+            
+            // Check for trap collisions
+            this.checkTrapCollisions();
+            
+            // Check for portal win condition
+            this.checkPortalWin();
         }
+         // Update flashlight visual
+        if (this.flashlight && this.gameManager) {
+            this.flashlight.visible = this.gameManager.flashlightActive;
+        }
+        
+        // Update enemies
+        this.enemies.forEach(enemy => {
+            if (enemy.isAlive && this.player && this.player.mesh) {
+                enemy.update(deltaTime, this.player.mesh.position);
+            }
+        });
+        
+        // Update items
+        this.items.forEach(item => {
+            item.update(deltaTime);
+        });
         
         // Update game manager
         this.gameManager.update(deltaTime);
@@ -116,6 +399,8 @@ export class GameScene {
             this.hud.update();
         }
     }
+    
+ 
     
     getCamera() {
         return this.camera;

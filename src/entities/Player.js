@@ -32,8 +32,8 @@ export class Player {
     spawn() {
         console.log('Spawning player...');
         
-        // Create player visual
-        const geometry = new THREE.CapsuleGeometry(0.3, 0.8, 4, 8); // Smaller capsule
+        // Create player visual - SMALLER for better ground contact
+        const geometry = new THREE.CapsuleGeometry(0.2, 0.6, 4, 8); // Even smaller
         const material = new THREE.MeshStandardMaterial({ 
             color: 0x4444ff,
             roughness: 0.3,
@@ -43,17 +43,18 @@ export class Player {
         this.mesh.castShadow = true;
         this.mesh.receiveShadow = true;
         
-        // Position player at maze start - LOWER HEIGHT
-        this.mesh.position.set(0, 0.8, 0); // Lower starting position
+        // Position player at maze start - LOWER to match ground
+        this.mesh.position.set(0, 0.3, 0); // Lowered from 0.8 to 0.3
         this.scene.add(this.mesh);
         
-        // Create physics body - LOWER HEIGHT
+        // Create physics body - SMALLER COLLIDER
         const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
-            .setTranslation(0, 0.8, 0) // Lower starting position
+            .setTranslation(0, 0.3, 0) // Lowered to match visual
             .lockRotations();
         this.body = this.world.createRigidBody(bodyDesc);
         
-        const colliderDesc = RAPIER.ColliderDesc.capsule(0.2, 0.15); // Smaller collider
+        // Smaller capsule collider - radius, halfHeight
+        const colliderDesc = RAPIER.ColliderDesc.capsule(0.15, 0.2); // Much smaller
         this.collider = this.world.createCollider(colliderDesc, this.body);
         
         // Setup camera - use the scene's camera
@@ -65,7 +66,7 @@ export class Player {
             console.error('Camera or renderer not available for player!');
         }
         
-        console.log('Player spawned');
+        console.log('Player spawned at proper height');
     }
     
     update(deltaTime) {

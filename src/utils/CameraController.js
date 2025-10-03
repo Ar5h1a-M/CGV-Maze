@@ -79,10 +79,13 @@ export class CameraController {
         this.camera.rotation.y = this.yaw;
         this.camera.rotation.x = this.pitch;
         
-        // Update camera position to follow player - LOWER EYE HEIGHT
+        // Update camera position to follow player - FIXED HEIGHT OFFSET
         if (playerPosition) {
-            this.camera.position.copy(playerPosition);
-            this.camera.position.y += 1.2; // Lower eye height (was 1.6)
+            this.camera.position.set(
+                playerPosition.x,
+                playerPosition.y + 1.0, // Reduced from 1.2 to 1.0 for shorter player
+                playerPosition.z
+            );
         }
     }
     
