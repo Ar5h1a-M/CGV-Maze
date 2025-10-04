@@ -39,14 +39,14 @@ export class MazeRenderer {
     createGround(size) {
         const groundGeometry = new THREE.PlaneGeometry(size * 3, size * 3);
         const groundMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0x4a7c59, // Brighter green
+            color: 0x4a7c59,
             roughness: 0.7,
             metalness: 0.1
         });
         const ground = new THREE.Mesh(groundGeometry, groundMaterial);
         ground.rotation.x = -Math.PI / 2;
         ground.receiveShadow = true;
-        ground.position.y = -0.1; // Slightly below walls
+        ground.position.y = -0.1;
         this.scene.add(ground);
         this.walls.push(ground);
         
@@ -61,11 +61,10 @@ export class MazeRenderer {
     
     createWalls(grid, size) {
         const wallMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0x3a6b47, // Brighter green for walls
+            color: 0x3a6b47,
             roughness: 0.8,
             metalness: 0.2
         });
-        
         const wallGeometry = new THREE.BoxGeometry(1, 2, 1);
         
         let wallCount = 0;
@@ -99,7 +98,7 @@ export class MazeRenderer {
     createExitPortal(position, mazeSize) {
         const portalGeometry = new THREE.CylinderGeometry(1, 1, 3, 16);
         const portalMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0x8888ff, // Brighter blue
+            color: 0x8888ff,
             transparent: true,
             opacity: 0.8
         });
@@ -107,10 +106,11 @@ export class MazeRenderer {
         const posX = position.x - mazeSize/2;
         const posZ = position.z - mazeSize/2;
         portal.position.set(posX, 1.5, posZ);
+        portal.name = 'exit:portal'; // <<< tag exit (optional)
         this.scene.add(portal);
         this.walls.push(portal);
         
-        // Add glowing effect
+        // Glow
         const portalLight = new THREE.PointLight(0x8888ff, 2, 15);
         portalLight.position.copy(portal.position);
         this.scene.add(portalLight);
@@ -119,9 +119,9 @@ export class MazeRenderer {
     }
     
     populateMaze(mazeData) {
-        // Place some test items
+        // Place items (flashlight + carrot)
         this.placeItem(mazeData, { type: 'flashlight', color: 0xffff00 });
-        this.placeItem(mazeData, { type: 'carrot', color: 0xff6600 });
+        this.placeItem(mazeData, { type: 'carrot',     color: 0xff6600 });
         
         console.log('Maze populated with items');
     }
@@ -129,7 +129,6 @@ export class MazeRenderer {
     placeItem(mazeData, item) {
         const availableSpots = [];
         
-        // Find available spots (paths in the maze)
         for (let z = 0; z < mazeData.grid.length; z++) {
             for (let x = 0; x < mazeData.grid[z].length; x++) {
                 if (mazeData.grid[z][x] === 0 && 
@@ -148,10 +147,15 @@ export class MazeRenderer {
             const posX = spot.x - mazeData.size/2;
             const posZ = spot.z - mazeData.size/2;
             itemMesh.position.set(posX, 0.5, posZ);
+
+            // <<< tag so Player can detect & pick up by type
+            itemMesh.name = `item:${item.type}`;
+            itemMesh.userData.type = item.type;
+
             this.scene.add(itemMesh);
             this.walls.push(itemMesh);
             
-            // Add glowing effect
+            // Glow
             const itemLight = new THREE.PointLight(item.color, 1, 5);
             itemLight.position.copy(itemMesh.position);
             this.scene.add(itemLight);

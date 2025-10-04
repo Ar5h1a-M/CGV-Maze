@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import RAPIER from "@dimforge/rapier3d-compat";
 import { InputHandler } from '../utils/InputHandler.js';
 import { CameraController } from '../utils/CameraController.js';
+import Flashlight from './Flashlight.js'; // <<< NEW
 
 export class Player {
     constructor(scene, world, gameManager, renderer) {
@@ -27,6 +28,12 @@ export class Player {
         // Player state
         this.isBlocking = false;
         this.currentItem = null;
+
+        // Flashlight
+        this.flashlight = null;   // SpotLight helper
+        this.hasFlashlight = false;
+        this._prevE = false;      // edge detection
+        this._prevF = false;
     }
     
     spawn() {
@@ -65,6 +72,9 @@ export class Player {
             console.error('Camera or renderer not available for player!');
         }
         
+        // Flashlight (mounted to camera, OFF until picked up)
+        this.flashlight = new Flashlight(this.camera);
+        
         console.log('Player spawned');
     }
     
@@ -75,7 +85,7 @@ export class Player {
         const position = this.body.translation();
         this.mesh.position.set(position.x, position.y, position.z);
         
-        // Update camera controller - this handles both mouse look and camera positioning
+        // Update camera controller - mouse look & camera position
         if (this.cameraController) {
             this.cameraController.update(deltaTime, this.mesh.position);
         }
@@ -83,14 +93,17 @@ export class Player {
         // Update blocking state
         this.isBlocking = this.inputHandler.isBlocking();
         
-        // Handle movement
+        // Handle movement (keeps your fixed jump/grounding style)
         this.handleMovement(deltaTime);
         
         // Handle stamina
         this.handleStamina(deltaTime);
         
-        // Handle item usage
+        // Handle item usage (numbers / generic E use)
         this.handleItems();
+
+        // Flashlight pickup/toggle/battery HUD
+        this._flashlightControls(deltaTime);
         
         // Debug: log camera position occasionally
         if (Math.random() < 0.02 && this.camera) { // 2% chance per frame
@@ -99,45 +112,42 @@ export class Player {
     }
     
     handleMovement(deltaTime) {
-    const movement = this.inputHandler.getMovementVector(this.cameraController);
-    const isSprinting = this.inputHandler.isSprinting();
-    const isJumping = this.inputHandler.isJumping();
-    
-    const currentSpeed = isSprinting ? this.sprintSpeed : this.moveSpeed;
-    
-    // Only apply horizontal movement, let physics handle Y
-    this.velocity.x = movement.x * currentSpeed;
-    this.velocity.z = movement.z * currentSpeed;
-    // Don't set velocity.y here - let gravity handle it
-    
-    // Handle jumping
-    if (isJumping && this.isGrounded) {
-        // Apply impulse instead of setting velocity
-        this.body.applyImpulse({ x: 0, y: this.jumpForce, z: 0 }, true);
-        this.isGrounded = false;
-        console.log('Jump!');
+        const movement = this.inputHandler.getMovementVector(this.cameraController);
+        const isSprinting = this.inputHandler.isSprinting();
+        const isJumping = this.inputHandler.isJumping();
+        
+        const currentSpeed = isSprinting ? this.sprintSpeed : this.moveSpeed;
+        
+        // Only apply horizontal movement, let physics handle Y
+        this.velocity.x = movement.x * currentSpeed;
+        this.velocity.z = movement.z * currentSpeed;
+        
+        // Jump (unchanged)
+        if (isJumping && this.isGrounded) {
+            this.body.applyImpulse({ x: 0, y: this.jumpForce, z: 0 }, true);
+            this.isGrounded = false;
+            console.log('Jump!');
+        }
+        
+        // Apply horizontal velocity, preserve Y from physics
+        this.body.setLinvel({ x: this.velocity.x, y: this.body.linvel().y, z: this.velocity.z }, true);
+        
+        // Ground check (unchanged style)
+        const pos = this.body.translation();
+        const isOnGround = pos.y <= 1.1 && Math.abs(this.body.linvel().y) < 0.1;
+        
+        if (isOnGround && !this.isGrounded) {
+            this.isGrounded = true;
+            console.log('Landed on ground at y=', pos.y.toFixed(3));
+        } else if (!isOnGround && this.isGrounded) {
+            this.isGrounded = false;
+        }
+        
+        if (movement.x !== 0 || movement.z !== 0) {
+            console.log('Moving - Pos:', {x: pos.x.toFixed(2), y: pos.y.toFixed(2), z: pos.z.toFixed(2)}, 
+                        'Grounded:', this.isGrounded);
+        }
     }
-    
-    // Update physics body with only horizontal velocity
-    this.body.setLinvel({ x: this.velocity.x, y: this.body.linvel().y, z: this.velocity.z }, true);
-    
-    // GROUND DETECTION (not collision handling)
-    const pos = this.body.translation();
-    const isOnGround = pos.y <= 1.1 && Math.abs(this.body.linvel().y) < 0.1;
-    
-    if (isOnGround && !this.isGrounded) {
-        this.isGrounded = true;
-        console.log('Landed on ground at y=', pos.y.toFixed(3));
-    } else if (!isOnGround && this.isGrounded) {
-        this.isGrounded = false;
-    }
-    
-    // Debug
-    if (movement.x !== 0 || movement.z !== 0) {
-        console.log('Moving - Pos:', {x: pos.x.toFixed(2), y: pos.y.toFixed(2), z: pos.z.toFixed(2)}, 
-                    'Grounded:', this.isGrounded);
-    }
-}
     
     handleStamina(deltaTime) {
         const isSprinting = this.inputHandler.isSprinting();
@@ -152,14 +162,14 @@ export class Player {
     }
     
     handleItems() {
-        // Check number keys 1-5 for item selection
+        // Number keys 1-5 for item selection
         for (let i = 0; i < 5; i++) {
             if (this.inputHandler.isKeyPressed(`Digit${i + 1}`)) {
                 this.selectItem(i);
             }
         }
         
-        // E key to use item
+        // E to use currently selected inventory item (kept)
         if (this.inputHandler.isKeyPressed('KeyE') && this.currentItem) {
             this.useCurrentItem();
         }
@@ -192,5 +202,48 @@ export class Player {
                 }
             }, 200);
         }
+    }
+
+    // ===== FLASHLIGHT =====
+    _flashlightControls(dt) {
+        if (!this.flashlight) return;
+
+        // Edge-detect E to PICK UP nearby flashlight item
+        const eNow = this.inputHandler.isKeyPressed('KeyE');
+        if (eNow && !this._prevE && !this.hasFlashlight) {
+            const found = this._findNearby('item:flashlight', 1.2);
+            if (found) {
+                found.parent?.remove(found);
+                this.hasFlashlight = true;
+                this.flashlight.enabled = true;
+
+                // add to inventory so HUD can show it
+                if (this.gameManager?.playerData?.inventory) {
+                    this.gameManager.playerData.inventory.push({ type: 'flashlight' });
+                }
+            }
+        }
+        this._prevE = eNow;
+
+        // Edge-detect F to TOGGLE beam
+        const fNow = this.inputHandler.isKeyPressed('KeyF');
+        if (fNow && !this._prevF && this.hasFlashlight) {
+            const on = this.flashlight.toggle();
+            this.gameManager?.hud?.setBattery?.(this.flashlight.percent, on);
+        }
+        this._prevF = fNow;
+
+        // Battery tick + HUD update
+        this.flashlight.update(dt);
+        this.gameManager?.hud?.setBattery?.(this.flashlight.percent, this.flashlight.on);
+    }
+
+    _findNearby(name, radius = 1.2) {
+        const me = this.mesh.position;
+        let hit = null;
+        this.scene.traverse(o => {
+            if (!hit && o.isMesh && o.name === name && o.position.distanceTo(me) <= radius) hit = o;
+        });
+        return hit;
     }
 }

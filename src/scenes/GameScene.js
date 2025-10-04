@@ -20,6 +20,7 @@ export class GameScene {
         this.camera = null;
         this.renderer = null;
         this.fogOfWar = null; // Add this
+        this._mazeData = null; // <<< store maze for minimap breadcrumbs
     }
     
     async init(gameManager, uiManager, renderer = null) {
@@ -40,29 +41,31 @@ export class GameScene {
         // Setup physics world
         this.setupPhysics();
         
-        // Setup lighting (make it darker for creepiness)
+        // Setup lighting (darker)
         this.setupLighting();
         
         // Generate maze
         this.mazeGenerator = new MazeGenerator(this.gameManager.currentDifficulty);
         const mazeData = this.mazeGenerator.generate();
+        this._mazeData = mazeData;
         
         // Render maze
         this.mazeRenderer = new MazeRenderer(this.scene, this.world);
         this.mazeRenderer.render(mazeData);
         
-        // Create fog of war
+        // Fog of war
         this.fogOfWar = new FogOfWar(this.scene, mazeData);
         
-        // Create player
+        // Player
         this.player = new Player(this.scene, this.world, this.gameManager, this.renderer);
         this.player.spawn();
         
-        // Setup HUD
+        // HUD
         this.hud = new HUD(this.gameManager);
         this.hud.create();
+        this.hud.buildMinimap(mazeData); // <<< build breadcrumb minimap
         
-        // Start game loop
+        // Start loop
         this.clock.start();
         
         console.log('GameScene initialized with fog of war');
@@ -74,17 +77,14 @@ export class GameScene {
     }
     
     setupLighting() {
-        // Darker ambient light for creepiness
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
         this.scene.add(ambientLight);
         
-        // Dim directional light
         const directionalLight = new THREE.DirectionalLight(0x444444, 0.4);
         directionalLight.position.set(50, 50, 25);
         directionalLight.castShadow = true;
         this.scene.add(directionalLight);
         
-        // Add a creepy colored light
         const creepyLight = new THREE.PointLight(0x8b0000, 0.5, 20);
         creepyLight.position.set(10, 5, 10);
         this.scene.add(creepyLight);
@@ -93,28 +93,25 @@ export class GameScene {
     update() {
         const deltaTime = this.clock.getDelta();
         
-        // Update physics
+        // Physics
         if (this.world) {
             this.world.step();
         }
         
-        // Update player
+        // Player + fog + minimap
         if (this.player) {
             this.player.update(deltaTime);
-            
-            // Update fog of war based on player position
             if (this.fogOfWar && this.player.mesh) {
                 this.fogOfWar.update(this.player.mesh.position);
             }
+            if (this.hud && this._mazeData && this.player.mesh) {
+                this.hud.updateMinimap(this._mazeData, this.player.mesh.position);
+            }
         }
         
-        // Update game manager
+        // GM + HUD
         this.gameManager.update(deltaTime);
-        
-        // Update HUD
-        if (this.hud) {
-            this.hud.update();
-        }
+        if (this.hud) this.hud.update();
     }
     
     getCamera() {
@@ -122,11 +119,7 @@ export class GameScene {
     }
     
     cleanup() {
-        if (this.hud) {
-            this.hud.cleanup();
-        }
-        if (this.fogOfWar) {
-            this.fogOfWar.clear();
-        }
+        if (this.hud) this.hud.cleanup();
+        if (this.fogOfWar) this.fogOfWar.clear();
     }
 }
