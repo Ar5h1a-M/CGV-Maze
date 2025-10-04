@@ -29,46 +29,108 @@ export class Player {
         // Player state
         this.isBlocking = false;
         this.currentItem = null;
+        
+        // For third-person rotation
+        this.targetRotation = 0;
+        this.rotationSpeed = 0.15;
+        this.rotationDamping = 0.1;
+        
+        // Player visual components
+        this.bodyMesh = null;
+        this.headMesh = null;
+        
+        // Movement direction
+        this.moveDirection = new THREE.Vector3();
     }
     
     spawn() {
         console.log('Spawning player...');
         
-        // Create player visual - SMALLER for better ground contact
-        const geometry = new THREE.CapsuleGeometry(0.2, 0.6, 4, 8); // Even smaller
-        const material = new THREE.MeshStandardMaterial({ 
-            color: 0x4444ff,
-            roughness: 0.3,
-            metalness: 0.7
-        });
-        this.mesh = new THREE.Mesh(geometry, material);
-        this.mesh.castShadow = true;
-        this.mesh.receiveShadow = true;
+        // Create player container
+        this.mesh = new THREE.Group();
+        this.mesh.name = 'player';
         
-        // Position player at maze start - LOWER to match ground
-        this.mesh.position.set(0, 0.3, 0); // Lowered from 0.8 to 0.3
+        // Create player visuals
+        this.createPlayerVisuals();
+        
+        // Position player
+        this.mesh.position.set(0, 0.3, 0);
         this.scene.add(this.mesh);
         
-        // Create physics body - SMALLER COLLIDER
+        // Create physics
         const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
-            .setTranslation(0, 0.3, 0) // Lowered to match visual
+            .setTranslation(0, 0.3, 0)
             .lockRotations();
         this.body = this.world.createRigidBody(bodyDesc);
         
-        // Smaller capsule collider - radius, halfHeight
-        const colliderDesc = RAPIER.ColliderDesc.capsule(0.15, 0.2); // Much smaller
+        const colliderDesc = RAPIER.ColliderDesc.capsule(0.15, 0.2);
         this.collider = this.world.createCollider(colliderDesc, this.body);
         
-        // Setup camera - use the scene's camera
+        // Setup camera - PASS THE SCENE TO CAMERA CONTROLLER
         this.camera = this.scene.camera;
         if (this.camera && this.renderer) {
-            this.cameraController = new CameraController(this.camera, this.renderer.domElement);
-            console.log('Camera controller created with camera:', this.camera.position);
+            // Pass the Three.js scene for collision detection
+            const threeScene = this.scene.scene || this.scene;
+            this.cameraController = new CameraController(this.camera, this.renderer.domElement, threeScene);
+            
+            this.cameraController.setCameraSwitchCallback((mode) => {
+                this.onCameraModeChanged(mode);
+            });
+            
+            console.log('Camera controller created with collision detection');
         } else {
             console.error('Camera or renderer not available for player!');
         }
         
-        console.log('Player spawned at proper height');
+        console.log('Player spawned');
+    }
+    
+    createPlayerVisuals() {
+        // Body (torso)
+        const bodyGeometry = new THREE.CapsuleGeometry(0.2, 0.5, 8, 8);
+        const bodyMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x4444ff,
+            roughness: 0.3,
+            metalness: 0.7
+        });
+        this.bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        this.bodyMesh.position.y = 0.35;
+        this.bodyMesh.castShadow = true;
+        this.mesh.add(this.bodyMesh);
+        
+        // Head
+        const headGeometry = new THREE.SphereGeometry(0.15, 8, 6);
+        const headMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0xffaa44,
+            roughness: 0.4,
+            metalness: 0.3
+        });
+        this.headMesh = new THREE.Mesh(headGeometry, headMaterial);
+        this.headMesh.position.y = 0.85;
+        this.headMesh.castShadow = true;
+        this.mesh.add(this.headMesh);
+        
+        // Add a forward indicator (small arrow) for debugging
+        const arrowGeometry = new THREE.ConeGeometry(0.05, 0.2, 4);
+        const arrowMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const arrow = new THREE.Mesh(arrowGeometry, arrowMaterial);
+        arrow.position.set(0, 0.8, 0.2);
+        arrow.rotation.x = Math.PI / 2;
+        this.mesh.add(arrow);
+    }
+    
+    onCameraModeChanged(mode) {
+        console.log('Camera mode changed to:', mode);
+        
+        if (mode === 'thirdPerson') {
+            // Show player in third-person
+            this.mesh.visible = true;
+            // Reset camera to behind player
+            this.cameraController.resetThirdPersonCamera();
+        } else {
+            // In first-person, you can choose to hide player or keep visible
+            this.mesh.visible = false; // Hide player model in first-person
+        }
     }
     
     update(deltaTime) {
@@ -78,95 +140,110 @@ export class Player {
         const position = this.body.translation();
         this.mesh.position.set(position.x, position.y, position.z);
         
-        // Update camera controller - this handles both mouse look and camera positioning
+        // Update player rotation based on movement
+        this.updatePlayerRotation(deltaTime);
+        
+        // Update camera
         if (this.cameraController) {
             this.cameraController.update(deltaTime, this.mesh.position);
         }
         
-        // Update blocking state
+        // Update states and handle input
+        this.updateBlockingState();
+        this.handleMovement(deltaTime);
+        this.handleStamina(deltaTime);
+        this.handleItems();
+    }
+    
+    updatePlayerRotation(deltaTime) {
+        if (this.cameraController.getCurrentMode() === 'thirdPerson') {
+            // In third-person, rotate player to face movement direction
+            const movement = this.inputHandler.getMovementVector(this.cameraController);
+            
+            if (movement.x !== 0 || movement.z !== 0) {
+                // Calculate target rotation from movement input
+                this.targetRotation = Math.atan2(movement.x, movement.z);
+                
+                // Smooth rotation with damping
+                const angleDiff = this.targetRotation - this.mesh.rotation.y;
+                
+                // Normalize angle difference to shortest path
+                const normalizedDiff = ((angleDiff + Math.PI) % (Math.PI * 2)) - Math.PI;
+                
+                this.mesh.rotation.y += normalizedDiff * this.rotationSpeed;
+            }
+            // If not moving, maintain current rotation
+        } else {
+            // In first-person, player always faces camera direction
+            if (this.cameraController) {
+                this.mesh.rotation.y = this.cameraController.yaw;
+            }
+        }
+    }
+    
+    updateBlockingState() {
         this.isBlocking = this.inputHandler.isBlocking();
 
-         // Sync blocking state with GameManager
         if (this.gameManager) {
             this.gameManager.playerData.isBlocking = this.isBlocking;
         }
 
         // Visual feedback for blocking
-        if (this.mesh.material) {
+        if (this.bodyMesh && this.bodyMesh.material) {
             if (this.isBlocking) {
-                this.mesh.material.emissive.set(0x0000ff); // Blue glow when blocking
-                this.mesh.material.emissiveIntensity = 0.3;
+                this.bodyMesh.material.emissive.set(0x0000ff);
+                this.bodyMesh.material.emissiveIntensity = 0.3;
             } else {
-                this.mesh.material.emissive.set(0x000000); // No glow when not blocking
-                this.mesh.material.emissiveIntensity = 0;
+                this.bodyMesh.material.emissive.set(0x000000);
+                this.bodyMesh.material.emissiveIntensity = 0;
             }
-        }
-        
-        // Handle movement
-        this.handleMovement(deltaTime);
-        
-        // Handle stamina
-        this.handleStamina(deltaTime);
-        
-        // Handle item usage
-        this.handleItems();
-        
-        // Debug: log camera position occasionally
-        if (Math.random() < 0.02 && this.camera) { // 2% chance per frame
-            console.log('Player pos:', this.mesh.position, 'Camera pos:', this.camera.position);
         }
     }
     
     handleMovement(deltaTime) {
-    const movement = this.inputHandler.getMovementVector(this.cameraController);
-    const isSprinting = this.inputHandler.isSprinting();
-    const isJumping = this.inputHandler.isJumping();
-    
-    const currentSpeed = isSprinting ? this.sprintSpeed : this.moveSpeed;
-    
-    // Only apply horizontal movement, let physics handle Y
-    this.velocity.x = movement.x * currentSpeed;
-    this.velocity.z = movement.z * currentSpeed;
-    // Don't set velocity.y here - let gravity handle it
-    
-    // Handle jumping
-    if (isJumping && this.isGrounded) {
-        // Apply impulse instead of setting velocity
-        this.body.applyImpulse({ x: 0, y: this.jumpForce, z: 0 }, true);
-        this.isGrounded = false;
-        // Update stamina for jumping
-        this.gameManager.updatePlayerStamina(-10);
-        console.log('Jump!');
-    }
-    
-    // Update physics body with only horizontal velocity
-    this.body.setLinvel({ x: this.velocity.x, y: this.body.linvel().y, z: this.velocity.z }, true);
-    
-    // GROUND DETECTION (not collision handling)
-    const pos = this.body.translation();
-    const isOnGround = pos.y <= 1.1 && Math.abs(this.body.linvel().y) < 0.1;
-    
-    if (isOnGround && !this.isGrounded) {
-        this.isGrounded = true;
-        console.log('Landed on ground at y=', pos.y.toFixed(3));
-    } else if (!isOnGround && this.isGrounded) {
-        this.isGrounded = false;
-    }
-    
-    // Debug
-    if (movement.x !== 0 || movement.z !== 0) {
-        console.log('Moving - Pos:', {x: pos.x.toFixed(2), y: pos.y.toFixed(2), z: pos.z.toFixed(2)}, 
-                    'Grounded:', this.isGrounded);
-    }
+        const movement = this.inputHandler.getMovementVector(this.cameraController);
+        const isSprinting = this.inputHandler.isSprinting();
+        const isJumping = this.inputHandler.isJumping();
+        
+        const currentSpeed = isSprinting ? this.sprintSpeed : this.moveSpeed;
+        
+        this.velocity.x = movement.x * currentSpeed;
+        this.velocity.z = movement.z * currentSpeed;
+        
+        if (isJumping && this.isGrounded) {
+            this.body.applyImpulse({ x: 0, y: this.jumpForce, z: 0 }, true);
+            this.isGrounded = false;
+            this.gameManager.updatePlayerStamina(-10);
+            console.log('Jump!');
+        }
+        
+        this.body.setLinvel({ x: this.velocity.x, y: this.body.linvel().y, z: this.velocity.z }, true);
+        
+        // Ground detection
+        const pos = this.body.translation();
+        const isOnGround = pos.y <= 1.1 && Math.abs(this.body.linvel().y) < 0.1;
+        
+        if (isOnGround && !this.isGrounded) {
+            this.isGrounded = true;
+            console.log('Landed on ground at y=', pos.y.toFixed(3));
+        } else if (!isOnGround && this.isGrounded) {
+            this.isGrounded = false;
+        }
+        
+        // Debug
+        if (movement.x !== 0 || movement.z !== 0) {
+            console.log('Moving - Pos:', {x: pos.x.toFixed(2), y: pos.y.toFixed(2), z: pos.z.toFixed(2)}, 
+                        'Grounded:', this.isGrounded);
+        }
 
-     if (isJumping) {
-        console.log('Jump state:', { 
-            grounded: this.isGrounded, 
-            posY: pos.y.toFixed(2), 
-            velY: this.body.linvel().y.toFixed(2) 
-        });
+        if (isJumping) {
+            console.log('Jump state:', { 
+                grounded: this.isGrounded, 
+                posY: pos.y.toFixed(2), 
+                velY: this.body.linvel().y.toFixed(2) 
+            });
+        }
     }
-}
     
     handleStamina(deltaTime) {
         const isSprinting = this.inputHandler.isSprinting();
@@ -181,7 +258,6 @@ export class Player {
             this.gameManager.updatePlayerStamina(20 * deltaTime);
         }
 
-        // Auto-stop blocking if no stamina
         if (this.isBlocking && this.gameManager.playerData.stamina <= 0) {
             this.isBlocking = false;
             this.gameManager.playerData.isBlocking = false;
@@ -190,14 +266,12 @@ export class Player {
     }
     
     handleItems() {
-        // Check number keys 1-5 for item selection
         for (let i = 0; i < 5; i++) {
             if (this.inputHandler.isKeyPressed(`Digit${i + 1}`)) {
                 this.selectItem(i);
             }
         }
         
-        // E key to use item
         if (this.inputHandler.isKeyPressed('KeyE') && this.currentItem) {
             this.useCurrentItem();
         }
@@ -221,14 +295,17 @@ export class Player {
         const finalAmount = this.isBlocking && !isPoison ? amount * 0.5 : amount;
         this.gameManager.updatePlayerHealth(-finalAmount);
         
-        // Visual feedback
-        if (this.mesh.material) {
-            this.mesh.material.color.set(0xff0000);
+        if (this.bodyMesh && this.bodyMesh.material) {
+            this.bodyMesh.material.color.set(0xff0000);
             setTimeout(() => {
-                if (this.mesh.material) {
-                    this.mesh.material.color.set(0x4444ff);
+                if (this.bodyMesh.material) {
+                    this.bodyMesh.material.color.set(0x4444ff);
                 }
             }, 200);
         }
+    }
+    
+    getCameraController() {
+        return this.cameraController;
     }
 }
