@@ -1,3 +1,5 @@
+//src\entities\Player.js
+
 import * as THREE from 'three';
 import RAPIER from "@dimforge/rapier3d-compat";
 import { InputHandler } from '../utils/InputHandler.js';
@@ -21,7 +23,7 @@ export class Player {
         // Player stats
         this.moveSpeed = 1;
         this.sprintSpeed = 5;
-        this.jumpForce = 10;
+        this.jumpForce = 0.5;
         this.isGrounded = false;
         
         // Player state
@@ -83,6 +85,22 @@ export class Player {
         
         // Update blocking state
         this.isBlocking = this.inputHandler.isBlocking();
+
+         // Sync blocking state with GameManager
+        if (this.gameManager) {
+            this.gameManager.playerData.isBlocking = this.isBlocking;
+        }
+
+        // Visual feedback for blocking
+        if (this.mesh.material) {
+            if (this.isBlocking) {
+                this.mesh.material.emissive.set(0x0000ff); // Blue glow when blocking
+                this.mesh.material.emissiveIntensity = 0.3;
+            } else {
+                this.mesh.material.emissive.set(0x000000); // No glow when not blocking
+                this.mesh.material.emissiveIntensity = 0;
+            }
+        }
         
         // Handle movement
         this.handleMovement(deltaTime);
@@ -116,6 +134,8 @@ export class Player {
         // Apply impulse instead of setting velocity
         this.body.applyImpulse({ x: 0, y: this.jumpForce, z: 0 }, true);
         this.isGrounded = false;
+        // Update stamina for jumping
+        this.gameManager.updatePlayerStamina(-10);
         console.log('Jump!');
     }
     
@@ -138,6 +158,14 @@ export class Player {
         console.log('Moving - Pos:', {x: pos.x.toFixed(2), y: pos.y.toFixed(2), z: pos.z.toFixed(2)}, 
                     'Grounded:', this.isGrounded);
     }
+
+     if (isJumping) {
+        console.log('Jump state:', { 
+            grounded: this.isGrounded, 
+            posY: pos.y.toFixed(2), 
+            velY: this.body.linvel().y.toFixed(2) 
+        });
+    }
 }
     
     handleStamina(deltaTime) {
@@ -147,8 +175,17 @@ export class Player {
         
         if (isSprinting && isMoving) {
             this.gameManager.updatePlayerStamina(-30 * deltaTime);
+        } else if (this.isBlocking) {
+            this.gameManager.updatePlayerStamina(-15 * deltaTime);
         } else {
             this.gameManager.updatePlayerStamina(20 * deltaTime);
+        }
+
+        // Auto-stop blocking if no stamina
+        if (this.isBlocking && this.gameManager.playerData.stamina <= 0) {
+            this.isBlocking = false;
+            this.gameManager.playerData.isBlocking = false;
+            console.log('💨 Out of stamina - blocking disabled');
         }
     }
     

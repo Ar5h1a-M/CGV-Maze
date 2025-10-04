@@ -13,7 +13,8 @@ export class GameManager {
         };
         this.gameState = 'menu'; // menu, playing, paused, gameOver
         this.flashlightActive = false;
-        this.visibilityBoost = 0;
+        this.visibilityBoost = 3;
+        this.playerData.isBlocking = false;
     }
     
     setSceneManager(sceneManager) {
@@ -52,7 +53,7 @@ export class GameManager {
 
     activateFlashlight() {
         this.flashlightActive = true;
-        this.visibilityBoost = 2.0; // Additional visibility radius
+        this.visibilityBoost = 3.0; // Additional visibility radius
         console.log('🔦 Flashlight activated! Increased visibility');
     }
 

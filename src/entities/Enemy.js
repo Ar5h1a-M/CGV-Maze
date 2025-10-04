@@ -1,3 +1,5 @@
+//src\entities\Enemy.js
+
 import * as THREE from 'three';
 import RAPIER from "@dimforge/rapier3d-compat";
 
@@ -14,31 +16,43 @@ export class Enemy {
         this.isAlive = true;
         this.lastAttackTime = 0;
         this.attackCooldown = 2000; // 2 seconds
+
+        this.agroRadius = 8.0; // Distance at which enemy starts following player
+        this.attackRadius = 1.5; // Distance at which enemy can attack
+        this.wanderSpeed = 0.5; // Speed when wandering (slower than chasing)
+        this.isAggressive = false; // Whether enemy is actively chasing player
+        this.wanderDirection = new THREE.Vector3();
+        this.wanderTimer = 0;
+        this.wanderInterval = 2.0; // Change direction every 2 seconds
+        this.lastWanderChange = 0;
         
         this.setupStats();
         this.spawn();
+
+        // Initialize wander direction
+        this.updateWanderDirection();
     }
     
     setupStats() {
         const stats = {
             spider: { 
-                health: 10, damage: 5, speed: 2, color: 0x8b0000, 
+                health: 10, damage: 5, speed: 0.7, color: 0x8b0000, 
                 scale: 0.5, isPoison: false, poisonDamage: 0, poisonDuration: 0 
             },
             rat: { 
-                health: 8, damage: 3, speed: 3, color: 0x666666, 
+                health: 8, damage: 3, speed: 0.7, color: 0x666666, 
                 scale: 0.4, isPoison: false, poisonDamage: 0, poisonDuration: 0 
             },
             zombie: { 
-                health: 30, damage: 20, speed: 1, color: 0x2d5a27, 
+                health: 30, damage: 20, speed: 0.6, color: 0x2d5a27, 
                 scale: 0.8, isPoison: false, poisonDamage: 0, poisonDuration: 0 
             },
             glowing_spider: {
-                health: 5, damage: 0, speed: 1.5, color: 0x00ff00,
+                health: 5, damage: 0, speed: 1, color: 0x00ff00,
                 scale: 0.5, isPoison: true, poisonDamage: 1, poisonDuration: 15
             },
             glowing_rat: {
-                health: 4, damage: 0, speed: 2, color: 0x00ff00, 
+                health: 4, damage: 0, speed: 1, color: 0x00ff00, 
                 scale: 0.4, isPoison: true, poisonDamage: 2, poisonDuration: 15
             },
             glowing_human: {
@@ -65,6 +79,15 @@ export class Enemy {
         this.isPoison = baseStats.isPoison;
         this.poisonDamage = baseStats.poisonDamage * multiplier;
         this.poisonDuration = baseStats.poisonDuration;
+
+        // Adjust agro radius based on enemy type
+        if (this.type.includes('spider')) {
+            this.agroRadius = 6.0;
+        } else if (this.type.includes('rat')) {
+            this.agroRadius = 7.0;
+        } else {
+            this.agroRadius = 5.0; // Zombies/humans have shorter agro
+        }
         
         // Add glowing effect for poison enemies
         if (this.type.includes('glowing')) {
@@ -161,6 +184,9 @@ moveTowardPlayer(playerPosition, deltaTime) {
         const moveDistance = this.speed * deltaTime;
         this.mesh.position.x += direction.x * moveDistance;
         this.mesh.position.z += direction.z * moveDistance;
+
+        // Store movement direction for facing
+            this.wanderDirection.copy(direction);
         
         // Update physics body to match visual position
         if (this.body) {
@@ -175,6 +201,39 @@ moveTowardPlayer(playerPosition, deltaTime) {
         console.log(`🕷️ ${this.type} moving toward player, distance: ${distance.toFixed(2)}`);
     }
 }
+
+ wander(deltaTime) {
+        if (!this.mesh) return;
+        
+        this.lastWanderChange += deltaTime;
+        
+        // Change wander direction periodically
+        if (this.lastWanderChange >= this.wanderInterval) {
+            this.updateWanderDirection();
+            this.lastWanderChange = 0;
+        }
+        
+        // Move in wander direction
+        const moveDistance = this.wanderSpeed * deltaTime;
+        this.mesh.position.x += this.wanderDirection.x * moveDistance;
+        this.mesh.position.z += this.wanderDirection.z * moveDistance;
+        
+        // Update physics body to match visual position
+        if (this.body) {
+            this.body.setTranslation(this.mesh.position, true);
+            this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+        }
+    }
+
+    updateWanderDirection() {
+        // Random direction for wandering
+        const angle = Math.random() * Math.PI * 2;
+        this.wanderDirection.set(
+            Math.cos(angle),
+            0,
+            Math.sin(angle)
+        ).normalize();
+    }
 
 facePlayer(playerPosition) {
     if (!playerPosition || !this.mesh) return;
@@ -192,6 +251,15 @@ facePlayer(playerPosition) {
         enemyPos.z + direction.z
     );
 }
+    getDistanceToPlayer(playerPosition) {
+        if (!playerPosition || !this.mesh) return Infinity;
+        
+        const enemyPos = this.mesh.position;
+        return Math.sqrt(
+            Math.pow(playerPosition.x - enemyPos.x, 2) +
+            Math.pow(playerPosition.z - enemyPos.z, 2)
+        );
+    }
     
     attack(player) {
         const currentTime = Date.now();
@@ -261,14 +329,7 @@ facePlayer(playerPosition) {
     }
     
     isInAttackRange(playerPosition, range = 1.5) {
-        if (!playerPosition || !this.body) return false;
-        
-        const enemyPos = this.body.translation();
-        const distance = Math.sqrt(
-            Math.pow(playerPosition.x - enemyPos.x, 2) +
-            Math.pow(playerPosition.z - enemyPos.z, 2)
-        );
-        
-        return distance <= range;
+        return this.getDistanceToPlayer(playerPosition) <= this.attackRadius;
+    
     }
 }
