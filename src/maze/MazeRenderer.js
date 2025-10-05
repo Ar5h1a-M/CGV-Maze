@@ -6,186 +6,138 @@ export class MazeRenderer {
         this.scene = scene;
         this.world = world;
         this.walls = [];
-        this.textureLoader = new THREE.TextureLoader();
-        this.materials = {};
-        this.loadTextures(); // Custom horror textures loaded here
     }
 
-    loadTextures() {
-        // 👇 EDIT THESE FILENAMES ONLY to swap textures
-        const wallTexture = this.textureLoader.load('/textures/wall_horror.jpg');
-        const groundTexture = this.textureLoader.load('/textures/ground_horror.jpg');
-        const wallNormal = this.textureLoader.load('/textures/wall_normal.png'); // optional
-
-        wallTexture.wrapS = wallTexture.wrapT = THREE.RepeatWrapping;
-        wallTexture.repeat.set(1, 2);
-
-        groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
-        groundTexture.repeat.set(8, 8);
-
-        // Shared materials (efficient!)
-        this.materials = {
-            wall: new THREE.MeshStandardMaterial({
-                map: wallTexture,
-                normalMap: wallNormal,   // adds bumps if you provide a normal map
-                roughness: 0.95,
-                metalness: 0.05
-            }),
-            ground: new THREE.MeshStandardMaterial({
-                map: groundTexture,
-                roughness: 1.0,
-                metalness: 0.0
-            })
-        };
-
-        console.log('Horror textures loaded ✅');
-    }
-
-    render(mazeData, difficulty = 'medium') {  // Add difficulty parameter with default
+    render(mazeData, difficulty = 'medium') {
         this.clearMaze();
-
-        // Ground + walls with textures
         
         console.log('Rendering maze with size:', mazeData.size);
         
         // Create ground
         this.createGround(mazeData.size);
-        this.createWalls(mazeData.grid, mazeData.size);
-
-        this.createExitPortal(mazeData.end, mazeData.size);
-        //this.populateMaze(mazeData);
-
-        console.log('Maze rendered with horror textures');
         
-        // Add enemies, items, and traps - PASS DIFFICULTY
+        // Create walls from grid
+        this.createWalls(mazeData.grid, mazeData.size);
+        
+        // Create exit portal
+        this.createExitPortal(mazeData.end, mazeData.size);
+        
+        // Add enemies, items, and traps
         this.populateMaze(mazeData, difficulty);
         
         console.log('Maze rendering complete. Total walls:', this.walls.length);
     }
-
+    
     clearMaze() {
-        this.walls.forEach(wall => this.scene.remove(wall));
+        this.walls.forEach(wall => {
+            this.scene.remove(wall);
+        });
         this.walls = [];
     }
-
+    
     createGround(size) {
         const groundGeometry = new THREE.PlaneGeometry(size * 3, size * 3);
-        const ground = new THREE.Mesh(groundGeometry, this.materials.ground);
+        const groundMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x4a7c59,
+            roughness: 0.7,
+            metalness: 0.1
+        });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
         ground.rotation.x = -Math.PI / 2;
         ground.receiveShadow = true;
         ground.position.y = -0.1;
+        ground.name = 'ground';
         this.scene.add(ground);
         this.walls.push(ground);
-
-        // Physics (unchanged)
+        
+        console.log('Ground created at size:', size * 3);
+        
+        // Physics ground
         const groundBodyDesc = RAPIER.RigidBodyDesc.fixed();
         const groundBody = this.world.createRigidBody(groundBodyDesc);
         const groundCollider = RAPIER.ColliderDesc.cuboid(size * 1.5, 0.1, size * 1.5);
         this.world.createCollider(groundCollider, groundBody);
     }
-
+    
     createWalls(grid, size) {
+        const wallMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x3a6b47,
+            roughness: 0.8,
+            metalness: 0.2
+        });
+        
         const wallGeometry = new THREE.BoxGeometry(1, 2, 1);
+        
         let wallCount = 0;
-
+        
         for (let z = 0; z < grid.length; z++) {
             for (let x = 0; x < grid[z].length; x++) {
                 if (grid[z][x] === 1) {
-                    const wall = new THREE.Mesh(wallGeometry, this.materials.wall);
+                    const wall = new THREE.Mesh(wallGeometry, wallMaterial);
                     const posX = x - size/2;
                     const posZ = z - size/2;
                     wall.position.set(posX, 1, posZ);
                     wall.castShadow = true;
                     wall.receiveShadow = true;
+                    wall.name = 'maze-wall';
+                    
+                    // CRITICAL: Mark wall as collidable for camera collision detection
+                    wall.userData.isCollidable = true;
+                    
                     this.scene.add(wall);
                     this.walls.push(wall);
-
-                    // Physics
+                    wallCount++;
+                    
+                    // Physics wall
                     const wallBodyDesc = RAPIER.RigidBodyDesc.fixed();
                     const wallBody = this.world.createRigidBody(wallBodyDesc);
                     wallBody.setTranslation({ x: posX, y: 1, z: posZ });
                     const wallCollider = RAPIER.ColliderDesc.cuboid(0.5, 1, 0.5);
                     this.world.createCollider(wallCollider, wallBody);
-
-                    wallCount++;
                 }
             }
         }
-
-        console.log(`Created ${wallCount} horror walls`);
+        
+        console.log(`Created ${wallCount} walls (marked as collidable)`);
     }
-
-    // Exit portal + items remain unchanged
+    
     createExitPortal(position, mazeSize) {
         const portalGeometry = new THREE.CylinderGeometry(1, 1, 3, 16);
         const portalMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0xff0000,
+            color: 0x8888ff,
             transparent: true,
-            opacity: 0.6
+            opacity: 0.8
         });
         const portal = new THREE.Mesh(portalGeometry, portalMaterial);
         const posX = position.x - mazeSize/2;
         const posZ = position.z - mazeSize/2;
         portal.position.set(posX, 1.5, posZ);
+        portal.name = 'exit-portal';
         this.scene.add(portal);
         this.walls.push(portal);
-
-        const portalLight = new THREE.PointLight(0xff0000, 2, 12);
+        
+        // Add glowing effect
+        const portalLight = new THREE.PointLight(0x8888ff, 2, 15);
         portalLight.position.copy(portal.position);
         this.scene.add(portalLight);
-
-        console.log('Creepy exit portal created 👻');
+        
+        console.log('Exit portal created at:', { x: posX, z: posZ });
     }
-
-    populateMaze(mazeData) {
-        this.placeItem(mazeData, { type: 'flashlight', color: 0xffff00 });
-        this.placeItem(mazeData, { type: 'skull', color: 0xffffff });
-        console.log('Items placed with horror theme');
+    
+    populateMaze(mazeData, difficulty) {
+        this.placeEnemies(mazeData, difficulty);
+        this.placeItems(mazeData);
+        this.placeTraps(mazeData, difficulty);
     }
-
-    placeItem(mazeData, item) {
-        const availableSpots = [];
-        for (let z = 0; z < mazeData.grid.length; z++) {
-            for (let x = 0; x < mazeData.grid[z].length; x++) {
-                if (mazeData.grid[z][x] === 0 && 
-                    !(x === mazeData.start.x && z === mazeData.start.z) &&
-                    !(x === mazeData.end.x && z === mazeData.end.z)) {
-                    availableSpots.push({ x, z });
-                }
-            }
-        }
-
-        if (availableSpots.length > 0) {
-            const spot = availableSpots[Math.floor(Math.random() * availableSpots.length)];
-            const itemGeometry = new THREE.SphereGeometry(0.3, 8, 8);
-            const itemMaterial = new THREE.MeshBasicMaterial({ color: item.color });
-            const itemMesh = new THREE.Mesh(itemGeometry, itemMaterial);
-            const posX = spot.x - mazeData.size/2;
-            const posZ = spot.z - mazeData.size/2;
-            itemMesh.position.set(posX, 0.5, posZ);
-            this.scene.add(itemMesh);
-            this.walls.push(itemMesh);
-
-            const itemLight = new THREE.PointLight(item.color, 1, 5);
-            itemLight.position.copy(itemMesh.position);
-            this.scene.add(itemLight);
-
-            console.log(`Placed ${item.type} at:`, { x: posX, z: posZ });
-        }
-    }
-
-    // pop enimies
-   // In MazeRenderer.js - fix the placeEnemies method
+    
     placeEnemies(mazeData, difficulty) {
         const enemyTypes = this.getEnemyTypesForDifficulty(difficulty);
         const availableSpots = this.findAvailableSpots(mazeData);
         
-        // Shuffle spots for random placement
         this.shuffleArray(availableSpots);
         
         let spotIndex = 0;
         
-        // Use Object.entries to iterate over the enemyTypes object
         Object.entries(enemyTypes).forEach(([enemyType, count]) => {
             for (let i = 0; i < count && spotIndex < availableSpots.length; i++) {
                 const spot = availableSpots[spotIndex++];
@@ -195,8 +147,7 @@ export class MazeRenderer {
                     spot.z - mazeData.size/2
                 );
                 
-                // Just log for now - GameScene will handle actual enemy creation
-                console.log(` Placing ${enemyType} at grid (${spot.x}, ${spot.z})`);
+                console.log(`Placing ${enemyType} at grid (${spot.x}, ${spot.z})`);
                 // Enemy creation will be handled by GameScene
             }
         });
@@ -204,20 +155,12 @@ export class MazeRenderer {
         console.log(`Placed enemies: ${JSON.stringify(enemyTypes)}`);
     }
 
-// Also update the populateMaze method to accept difficulty
-populateMaze(mazeData, difficulty) {
-    this.placeEnemies(mazeData, difficulty);
-    this.placeItems(mazeData);
-    this.placeTraps(mazeData, difficulty);
-}
-
     placeItems(mazeData) {
         const itemTypes = ['flashlight', 'trenchcoat', 'carrot', 'note'];
         const availableSpots = this.findAvailableSpots(mazeData);
         
         this.shuffleArray(availableSpots);
         
-        // Place one of each item type
         itemTypes.forEach((itemType, index) => {
             if (index < availableSpots.length) {
                 const spot = availableSpots[index];
@@ -234,59 +177,60 @@ populateMaze(mazeData, difficulty) {
     }
 
     placeTraps(mazeData, difficulty) {
-    const trapCount = this.getTrapCount(difficulty);
-    const availableSpots = this.findAvailableSpots(mazeData);
-    
-    this.shuffleArray(availableSpots);
-    
-    for (let i = 0; i < trapCount && i < availableSpots.length; i++) {
-        const spot = availableSpots[i];
+        const trapCount = this.getTrapCount(difficulty);
+        const availableSpots = this.findAvailableSpots(mazeData);
         
-        // Trap visualization
-        const trapGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.1, 8);
-        const trapMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0xff0000,
-            transparent: true,
-            opacity: 0.7,
-            visible: true
-        });
+        this.shuffleArray(availableSpots);
         
-        const trap = new THREE.Mesh(trapGeometry, trapMaterial);
-        trap.position.set(
-            spot.x - mazeData.size/2,
-            0.05,
-            spot.z - mazeData.size/2
-        );
-        trap.userData = { 
-            isTrap: true, 
-            damage: this.getTrapDamage(difficulty),
-            type: 'trap',
-            triggered: false
-        };
-        this.scene.add(trap);
-        this.walls.push(trap);
-        
-        // FIXED: Better physics trap setup
-        const trapBodyDesc = RAPIER.RigidBodyDesc.fixed();
-        const trapBody = this.world.createRigidBody(trapBodyDesc);
-        trapBody.setTranslation({
-            x: trap.position.x,
-            y: 0.05,
-            z: trap.position.z
-        });
-        
-        // Use a thinner collider that's definitely a sensor
-        const trapCollider = RAPIER.ColliderDesc.cuboid(0.3, 0.02, 0.3); // Thinner
-        trapCollider.setSensor(true); // Important: sensor doesn't generate contact forces
-        trapCollider.setRestitution(0.0); // No bounce
-        trapCollider.setFriction(0.0); // No friction
-        
-        const trapPhysicsCollider = this.world.createCollider(trapCollider, trapBody);
-        trap.userData.physicsCollider = trapPhysicsCollider;
-        
-        console.log(`⚠️ Placed trap at (${spot.x}, ${spot.z})`);
+        for (let i = 0; i < trapCount && i < availableSpots.length; i++) {
+            const spot = availableSpots[i];
+            
+            // Trap visualization
+            const trapGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.1, 8);
+            const trapMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xff0000,
+                transparent: true,
+                opacity: 0.7,
+                visible: true
+            });
+            
+            const trap = new THREE.Mesh(trapGeometry, trapMaterial);
+            trap.position.set(
+                spot.x - mazeData.size/2,
+                0.05,
+                spot.z - mazeData.size/2
+            );
+            trap.name = 'trap';
+            trap.userData = { 
+                isTrap: true, 
+                damage: this.getTrapDamage(difficulty),
+                type: 'trap',
+                triggered: false
+            };
+            this.scene.add(trap);
+            this.walls.push(trap);
+            
+            // Physics trap setup
+            const trapBodyDesc = RAPIER.RigidBodyDesc.fixed();
+            const trapBody = this.world.createRigidBody(trapBodyDesc);
+            trapBody.setTranslation({
+                x: trap.position.x,
+                y: 0.05,
+                z: trap.position.z
+            });
+            
+            const trapCollider = RAPIER.ColliderDesc.cuboid(0.3, 0.02, 0.3);
+            trapCollider.setSensor(true);
+            trapCollider.setRestitution(0.0);
+            trapCollider.setFriction(0.0);
+            
+            const trapPhysicsCollider = this.world.createCollider(trapCollider, trapBody);
+            trap.userData.physicsCollider = trapPhysicsCollider;
+            
+            console.log(`Placed trap at (${spot.x}, ${spot.z})`);
+        }
     }
-}
+    
     // Helper methods
     findAvailableSpots(mazeData) {
         const spots = [];
