@@ -114,6 +114,10 @@ export class InputHandler {
     isBlocking() {
         return this.isKeyPressed('KeyB');
     }
+
+    isCameraSwitchPressed() {
+        return this.isKeyPressed('KeyV');
+    }
     
     getMouseMovement() {
         return {
