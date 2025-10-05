@@ -67,6 +67,7 @@ export class Player {
         this.collider = this.world.createCollider(colliderDesc, this.body);
         
         // Setup camera - PASS THE SCENE TO CAMERA CONTROLLER
+        // Camera
         this.camera = this.scene.camera;
         if (this.camera && this.renderer) {
             // Pass the Three.js scene for collision detection
@@ -144,6 +145,7 @@ export class Player {
         this.updatePlayerRotation(deltaTime);
         
         // Update camera
+        // Camera controller update
         if (this.cameraController) {
             this.cameraController.update(deltaTime, this.mesh.position);
         }
@@ -182,6 +184,7 @@ export class Player {
     }
     
     updateBlockingState() {
+        // Update blocking
         this.isBlocking = this.inputHandler.isBlocking();
 
         if (this.gameManager) {
@@ -205,36 +208,65 @@ export class Player {
         const isSprinting = this.inputHandler.isSprinting();
         const isJumping = this.inputHandler.isJumping();
         
-        const currentSpeed = isSprinting ? this.sprintSpeed : this.moveSpeed;
+        // Movement & stamina
+        this.handleMovement(deltaTime);
+        this.handleStamina(deltaTime);
         
-        this.velocity.x = movement.x * currentSpeed;
-        this.velocity.z = movement.z * currentSpeed;
+        // Item usage
+        this.handleItems();
         
-        if (isJumping && this.isGrounded) {
-            this.body.applyImpulse({ x: 0, y: this.jumpForce, z: 0 }, true);
-            this.isGrounded = false;
-            this.gameManager.updatePlayerStamina(-10);
-            console.log('Jump!');
-        }
-        
-        this.body.setLinvel({ x: this.velocity.x, y: this.body.linvel().y, z: this.velocity.z }, true);
-        
-        // Ground detection
-        const pos = this.body.translation();
-        const isOnGround = pos.y <= 1.1 && Math.abs(this.body.linvel().y) < 0.1;
-        
-        if (isOnGround && !this.isGrounded) {
-            this.isGrounded = true;
-            console.log('Landed on ground at y=', pos.y.toFixed(3));
-        } else if (!isOnGround && this.isGrounded) {
-            this.isGrounded = false;
-        }
-        
-        // Debug
-        if (movement.x !== 0 || movement.z !== 0) {
-            console.log('Moving - Pos:', {x: pos.x.toFixed(2), y: pos.y.toFixed(2), z: pos.z.toFixed(2)}, 
-                        'Grounded:', this.isGrounded);
-        }
+        // Update gameManager with player state (for HUD + minimap)
+        this.gameManager.playerData.position = {
+            x: this.mesh.position.x,
+            y: this.mesh.position.y,
+            z: this.mesh.position.z
+        };
+        this.gameManager.playerData.rotation = {
+            y: this.camera ? this.camera.rotation.y : 0
+        };
+    }
+    
+    handleMovement(deltaTime) {
+    const movement = this.inputHandler.getMovementVector(this.cameraController);
+    const isSprinting = this.inputHandler.isSprinting();
+    const isJumping = this.inputHandler.isJumping();
+    
+    const currentSpeed = isSprinting ? this.sprintSpeed : this.moveSpeed;
+    
+    // Only apply horizontal movement, let physics handle Y
+    this.velocity.x = movement.x * currentSpeed;
+    this.velocity.z = movement.z * currentSpeed;
+    // Don't set velocity.y here - let gravity handle it
+    
+    // Handle jumping
+    if (isJumping && this.isGrounded) {
+        // Apply impulse instead of setting velocity
+        this.body.applyImpulse({ x: 0, y: this.jumpForce, z: 0 }, true);
+        this.isGrounded = false;
+        // Update stamina for jumping
+        this.gameManager.updatePlayerStamina(-10);
+        console.log('Jump!');
+    }
+    
+    // Update physics body with only horizontal velocity
+    this.body.setLinvel({ x: this.velocity.x, y: this.body.linvel().y, z: this.velocity.z }, true);
+    
+    // GROUND DETECTION (not collision handling)
+    const pos = this.body.translation();
+    const isOnGround = pos.y <= 1.1 && Math.abs(this.body.linvel().y) < 0.1;
+    
+    if (isOnGround && !this.isGrounded) {
+        this.isGrounded = true;
+        console.log('Landed on ground at y=', pos.y.toFixed(3));
+    } else if (!isOnGround && this.isGrounded) {
+        this.isGrounded = false;
+    }
+    
+    // Debug
+    if (movement.x !== 0 || movement.z !== 0) {
+        console.log('Moving - Pos:', {x: pos.x.toFixed(2), y: pos.y.toFixed(2), z: pos.z.toFixed(2)}, 
+                    'Grounded:', this.isGrounded);
+    }
 
         if (isJumping) {
             console.log('Jump state:', { 
@@ -266,12 +298,14 @@ export class Player {
     }
     
     handleItems() {
+        // Number keys for selection
         for (let i = 0; i < 5; i++) {
             if (this.inputHandler.isKeyPressed(`Digit${i + 1}`)) {
                 this.selectItem(i);
             }
         }
         
+        // Use item
         if (this.inputHandler.isKeyPressed('KeyE') && this.currentItem) {
             this.useCurrentItem();
         }
@@ -286,7 +320,9 @@ export class Player {
     
     useCurrentItem() {
         if (this.currentItem) {
-            this.gameManager.useInventoryItem(this.gameManager.playerData.inventory.indexOf(this.currentItem));
+            this.gameManager.useInventoryItem(
+                this.gameManager.playerData.inventory.indexOf(this.currentItem)
+            );
             this.currentItem = null;
         }
     }

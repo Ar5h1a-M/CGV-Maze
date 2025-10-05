@@ -6,35 +6,68 @@ export class MazeRenderer {
         this.scene = scene;
         this.world = world;
         this.walls = [];
+        this.textureLoader = new THREE.TextureLoader();
+        this.materials = {};
+        this.loadTextures(); // Custom horror textures loaded here
+    }
+
+    loadTextures() {
+        // 👇 EDIT THESE FILENAMES ONLY to swap textures
+        const wallTexture = this.textureLoader.load('/textures/wall_horror.jpg');
+        const groundTexture = this.textureLoader.load('/textures/ground_horror.jpg');
+        const wallNormal = this.textureLoader.load('/textures/wall_normal.png'); // optional
+
+        wallTexture.wrapS = wallTexture.wrapT = THREE.RepeatWrapping;
+        wallTexture.repeat.set(1, 2);
+
+        groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
+        groundTexture.repeat.set(8, 8);
+
+        // Shared materials (efficient!)
+        this.materials = {
+            wall: new THREE.MeshStandardMaterial({
+                map: wallTexture,
+                normalMap: wallNormal,   // adds bumps if you provide a normal map
+                roughness: 0.95,
+                metalness: 0.05
+            }),
+            ground: new THREE.MeshStandardMaterial({
+                map: groundTexture,
+                roughness: 1.0,
+                metalness: 0.0
+            })
+        };
+
+        console.log('Horror textures loaded ✅');
     }
 
     render(mazeData, difficulty = 'medium') {
         this.clearMaze();
+
+        // Ground + walls with textures
         
         console.log('Rendering maze with size:', mazeData.size);
         
         // Create ground
         this.createGround(mazeData.size);
-        
-        // Create walls from grid
         this.createWalls(mazeData.grid, mazeData.size);
-        
-        // Create exit portal
+
         this.createExitPortal(mazeData.end, mazeData.size);
+        //this.populateMaze(mazeData);
+
+        console.log('Maze rendered with horror textures');
         
         // Add enemies, items, and traps
         this.populateMaze(mazeData, difficulty);
         
         console.log('Maze rendering complete. Total walls:', this.walls.length);
     }
-    
+
     clearMaze() {
-        this.walls.forEach(wall => {
-            this.scene.remove(wall);
-        });
+        this.walls.forEach(wall => this.scene.remove(wall));
         this.walls = [];
     }
-    
+
     createGround(size) {
         const groundGeometry = new THREE.PlaneGeometry(size * 3, size * 3);
         const groundMaterial = new THREE.MeshStandardMaterial({ 
@@ -49,16 +82,14 @@ export class MazeRenderer {
         ground.name = 'ground';
         this.scene.add(ground);
         this.walls.push(ground);
-        
-        console.log('Ground created at size:', size * 3);
-        
-        // Physics ground
+
+        // Physics (unchanged)
         const groundBodyDesc = RAPIER.RigidBodyDesc.fixed();
         const groundBody = this.world.createRigidBody(groundBodyDesc);
         const groundCollider = RAPIER.ColliderDesc.cuboid(size * 1.5, 0.1, size * 1.5);
         this.world.createCollider(groundCollider, groundBody);
     }
-    
+
     createWalls(grid, size) {
         const wallMaterial = new THREE.MeshStandardMaterial({ 
             color: 0x3a6b47,
@@ -67,13 +98,12 @@ export class MazeRenderer {
         });
         
         const wallGeometry = new THREE.BoxGeometry(1, 2, 1);
-        
         let wallCount = 0;
-        
+
         for (let z = 0; z < grid.length; z++) {
             for (let x = 0; x < grid[z].length; x++) {
                 if (grid[z][x] === 1) {
-                    const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+                    const wall = new THREE.Mesh(wallGeometry, this.materials.wall);
                     const posX = x - size/2;
                     const posZ = z - size/2;
                     wall.position.set(posX, 1, posZ);
@@ -86,27 +116,31 @@ export class MazeRenderer {
                     
                     this.scene.add(wall);
                     this.walls.push(wall);
-                    wallCount++;
-                    
-                    // Physics wall
+
+                    // Physics
                     const wallBodyDesc = RAPIER.RigidBodyDesc.fixed();
                     const wallBody = this.world.createRigidBody(wallBodyDesc);
                     wallBody.setTranslation({ x: posX, y: 1, z: posZ });
                     const wallCollider = RAPIER.ColliderDesc.cuboid(0.5, 1, 0.5);
                     this.world.createCollider(wallCollider, wallBody);
+
+                    wallCount++;
                 }
             }
         }
         
         console.log(`Created ${wallCount} walls (marked as collidable)`);
+
+        console.log(`Created ${wallCount} horror walls`);
     }
-    
+
+    // Exit portal + items remain unchanged
     createExitPortal(position, mazeSize) {
         const portalGeometry = new THREE.CylinderGeometry(1, 1, 3, 16);
         const portalMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0x8888ff,
+            color: 0xff0000,
             transparent: true,
-            opacity: 0.8
+            opacity: 0.6
         });
         const portal = new THREE.Mesh(portalGeometry, portalMaterial);
         const posX = position.x - mazeSize/2;
@@ -115,21 +149,53 @@ export class MazeRenderer {
         portal.name = 'exit-portal';
         this.scene.add(portal);
         this.walls.push(portal);
-        
-        // Add glowing effect
-        const portalLight = new THREE.PointLight(0x8888ff, 2, 15);
+
+        const portalLight = new THREE.PointLight(0xff0000, 2, 12);
         portalLight.position.copy(portal.position);
         this.scene.add(portalLight);
-        
-        console.log('Exit portal created at:', { x: posX, z: posZ });
+
+        console.log('Creepy exit portal created 👻');
     }
-    
-    populateMaze(mazeData, difficulty) {
-        this.placeEnemies(mazeData, difficulty);
-        this.placeItems(mazeData);
-        this.placeTraps(mazeData, difficulty);
+
+    populateMaze(mazeData) {
+        this.placeItem(mazeData, { type: 'flashlight', color: 0xffff00 });
+        this.placeItem(mazeData, { type: 'skull', color: 0xffffff });
+        console.log('Items placed with horror theme');
     }
-    
+
+    placeItem(mazeData, item) {
+        const availableSpots = [];
+        for (let z = 0; z < mazeData.grid.length; z++) {
+            for (let x = 0; x < mazeData.grid[z].length; x++) {
+                if (mazeData.grid[z][x] === 0 && 
+                    !(x === mazeData.start.x && z === mazeData.start.z) &&
+                    !(x === mazeData.end.x && z === mazeData.end.z)) {
+                    availableSpots.push({ x, z });
+                }
+            }
+        }
+
+        if (availableSpots.length > 0) {
+            const spot = availableSpots[Math.floor(Math.random() * availableSpots.length)];
+            const itemGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+            const itemMaterial = new THREE.MeshBasicMaterial({ color: item.color });
+            const itemMesh = new THREE.Mesh(itemGeometry, itemMaterial);
+            const posX = spot.x - mazeData.size/2;
+            const posZ = spot.z - mazeData.size/2;
+            itemMesh.position.set(posX, 0.5, posZ);
+            this.scene.add(itemMesh);
+            this.walls.push(itemMesh);
+
+            const itemLight = new THREE.PointLight(item.color, 1, 5);
+            itemLight.position.copy(itemMesh.position);
+            this.scene.add(itemLight);
+
+            console.log(`Placed ${item.type} at:`, { x: posX, z: posZ });
+        }
+    }
+
+    // pop enimies
+   // In MazeRenderer.js - fix the placeEnemies method
     placeEnemies(mazeData, difficulty) {
         const enemyTypes = this.getEnemyTypesForDifficulty(difficulty);
         const availableSpots = this.findAvailableSpots(mazeData);
