@@ -19,7 +19,13 @@ export class InputHandler {
         // Keyboard events
         document.addEventListener('keydown', (event) => {
             this.keys.add(event.code);
-            event.preventDefault(); // Prevent browser shortcuts
+            
+            // Prevent browser shortcuts for game controls
+            const gameKeys = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ShiftLeft', 'ShiftRight', 
+                            'KeyB', 'KeyE', 'KeyV', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+            if (gameKeys.includes(event.code)) {
+                event.preventDefault();
+            }
         });
         
         document.addEventListener('keyup', (event) => {
@@ -65,7 +71,7 @@ export class InputHandler {
         const vector = { x: 0, z: 0 };
         
         if (cameraController) {
-            // Camera-relative movement - FIXED DIRECTIONS
+            // Camera-relative movement
             const forward = cameraController.getForwardVector();
             const right = cameraController.getRightVector();
             
@@ -78,11 +84,11 @@ export class InputHandler {
                 vector.z -= forward.z;
             }
             if (this.isKeyPressed('KeyA') || this.isKeyPressed('ArrowLeft')) {
-                vector.x += right.x;  // FIXED: was subtracting, now adding
+                vector.x += right.x;
                 vector.z += right.z;
             }
             if (this.isKeyPressed('KeyD') || this.isKeyPressed('ArrowRight')) {
-                vector.x -= right.x;  // FIXED: was adding, now subtracting
+                vector.x -= right.x;
                 vector.z -= right.z;
             }
         } else {
@@ -113,6 +119,10 @@ export class InputHandler {
     
     isBlocking() {
         return this.isKeyPressed('KeyB');
+    }
+    
+    isCameraSwitchPressed() {
+        return this.isKeyPressed('KeyV');
     }
     
     getMouseMovement() {
