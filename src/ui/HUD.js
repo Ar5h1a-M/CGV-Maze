@@ -349,6 +349,43 @@ export class HUD {
     // -------------------------
     // HUD update loop
     // -------------------------
+    createBlockingIndicator() {
+        const blockingIndicator = document.createElement('div');
+        blockingIndicator.style.cssText = `
+            position: absolute;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 139, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            display: none;
+        `;
+        blockingIndicator.id = 'blocking-indicator';
+        blockingIndicator.textContent = 'BLOCKING';
+        this.container.appendChild(blockingIndicator);
+    }
+
+    createFlashlightIndicator() {
+        const indicator = document.createElement('div');
+        indicator.style.cssText = `
+            position: absolute;
+            top: 100px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #ffff00;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+        `;
+        indicator.id = 'flashlight-indicator';
+        indicator.textContent = '🔦 OFF';
+        this.container.appendChild(indicator);
+    }
+
     update() {
         // Health
         if (this.healthBar) {
@@ -380,6 +417,21 @@ export class HUD {
         
         // Inventory
         this.updateInventory();
+
+        // Update blocking indicator
+        const blockingIndicator = document.getElementById('blocking-indicator');
+        if (blockingIndicator) {
+            const isBlocking = this.gameManager.playerData.isBlocking || false;
+            blockingIndicator.style.display = isBlocking ? 'block' : 'none';
+        }
+        
+        // Update flashlight indicator
+        const flashlightIndicator = document.getElementById('flashlight-indicator');
+        if (!flashlightIndicator) {
+            this.createFlashlightIndicator();
+        } else {
+            flashlightIndicator.textContent = this.gameManager.flashlightActive ? '🔦 ON' : '🔦 OFF';
+        }
     }
     
     updateInventory() {

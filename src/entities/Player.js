@@ -1,3 +1,5 @@
+//src\entities\Player.js
+
 import * as THREE from 'three';
 import RAPIER from "@dimforge/rapier3d-compat";
 import { InputHandler } from '../utils/InputHandler.js';
@@ -21,7 +23,7 @@ export class Player {
         // Player stats
         this.moveSpeed = 1;
         this.sprintSpeed = 5;
-        this.jumpForce = 10;
+        this.jumpForce = 0.5;
         this.isGrounded = false;
         
         // Player state
@@ -32,8 +34,8 @@ export class Player {
     spawn() {
         console.log('Spawning player...');
         
-        // Create player visual
-        const geometry = new THREE.CapsuleGeometry(0.3, 0.8, 4, 8); 
+        // Create player visual - SMALLER for better ground contact
+        const geometry = new THREE.CapsuleGeometry(0.2, 0.6, 4, 8); // Even smaller
         const material = new THREE.MeshStandardMaterial({ 
             color: 0x4444ff,
             roughness: 0.3,
@@ -43,17 +45,18 @@ export class Player {
         this.mesh.castShadow = true;
         this.mesh.receiveShadow = true;
         
-        // Position player at maze start
-        this.mesh.position.set(0, 0.8, 0);
+        // Position player at maze start - LOWER to match ground
+        this.mesh.position.set(0, 0.3, 0); // Lowered from 0.8 to 0.3
         this.scene.add(this.mesh);
         
-        // Physics body
+        // Create physics body - SMALLER COLLIDER
         const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
-            .setTranslation(0, 0.8, 0)
+            .setTranslation(0, 0.3, 0) // Lowered to match visual
             .lockRotations();
         this.body = this.world.createRigidBody(bodyDesc);
         
-        const colliderDesc = RAPIER.ColliderDesc.capsule(0.2, 0.15);
+        // Smaller capsule collider - radius, halfHeight
+        const colliderDesc = RAPIER.ColliderDesc.capsule(0.15, 0.2); // Much smaller
         this.collider = this.world.createCollider(colliderDesc, this.body);
         
         // Camera
@@ -65,7 +68,7 @@ export class Player {
             console.error('Camera or renderer not available for player!');
         }
         
-        console.log('Player spawned');
+        console.log('Player spawned at proper height');
     }
     
     update(deltaTime) {
@@ -82,6 +85,22 @@ export class Player {
         
         // Update blocking
         this.isBlocking = this.inputHandler.isBlocking();
+
+         // Sync blocking state with GameManager
+        if (this.gameManager) {
+            this.gameManager.playerData.isBlocking = this.isBlocking;
+        }
+
+        // Visual feedback for blocking
+        if (this.mesh.material) {
+            if (this.isBlocking) {
+                this.mesh.material.emissive.set(0x0000ff); // Blue glow when blocking
+                this.mesh.material.emissiveIntensity = 0.3;
+            } else {
+                this.mesh.material.emissive.set(0x000000); // No glow when not blocking
+                this.mesh.material.emissiveIntensity = 0;
+            }
+        }
         
         // Movement & stamina
         this.handleMovement(deltaTime);
@@ -102,41 +121,55 @@ export class Player {
     }
     
     handleMovement(deltaTime) {
-        const movement = this.inputHandler.getMovementVector(this.cameraController);
-        const isSprinting = this.inputHandler.isSprinting();
-        const isJumping = this.inputHandler.isJumping();
-        
-        const currentSpeed = isSprinting ? this.sprintSpeed : this.moveSpeed;
-        
-        // Horizontal movement
-        this.velocity.x = movement.x * currentSpeed;
-        this.velocity.z = movement.z * currentSpeed;
-        
-        // Jumping
-        if (isJumping && this.isGrounded) {
-            this.body.applyImpulse({ x: 0, y: this.jumpForce, z: 0 }, true);
-            this.isGrounded = false;
-            console.log('Jump!');
-        }
-        
-        // Apply horizontal velocity
-        this.body.setLinvel({ 
-            x: this.velocity.x, 
-            y: this.body.linvel().y, 
-            z: this.velocity.z 
-        }, true);
-        
-        // Ground check
-        const pos = this.body.translation();
-        const isOnGround = pos.y <= 1.1 && Math.abs(this.body.linvel().y) < 0.1;
-        
-        if (isOnGround && !this.isGrounded) {
-            this.isGrounded = true;
-            console.log('Landed on ground at y=', pos.y.toFixed(3));
-        } else if (!isOnGround && this.isGrounded) {
-            this.isGrounded = false;
-        }
+    const movement = this.inputHandler.getMovementVector(this.cameraController);
+    const isSprinting = this.inputHandler.isSprinting();
+    const isJumping = this.inputHandler.isJumping();
+    
+    const currentSpeed = isSprinting ? this.sprintSpeed : this.moveSpeed;
+    
+    // Only apply horizontal movement, let physics handle Y
+    this.velocity.x = movement.x * currentSpeed;
+    this.velocity.z = movement.z * currentSpeed;
+    // Don't set velocity.y here - let gravity handle it
+    
+    // Handle jumping
+    if (isJumping && this.isGrounded) {
+        // Apply impulse instead of setting velocity
+        this.body.applyImpulse({ x: 0, y: this.jumpForce, z: 0 }, true);
+        this.isGrounded = false;
+        // Update stamina for jumping
+        this.gameManager.updatePlayerStamina(-10);
+        console.log('Jump!');
     }
+    
+    // Update physics body with only horizontal velocity
+    this.body.setLinvel({ x: this.velocity.x, y: this.body.linvel().y, z: this.velocity.z }, true);
+    
+    // GROUND DETECTION (not collision handling)
+    const pos = this.body.translation();
+    const isOnGround = pos.y <= 1.1 && Math.abs(this.body.linvel().y) < 0.1;
+    
+    if (isOnGround && !this.isGrounded) {
+        this.isGrounded = true;
+        console.log('Landed on ground at y=', pos.y.toFixed(3));
+    } else if (!isOnGround && this.isGrounded) {
+        this.isGrounded = false;
+    }
+    
+    // Debug
+    if (movement.x !== 0 || movement.z !== 0) {
+        console.log('Moving - Pos:', {x: pos.x.toFixed(2), y: pos.y.toFixed(2), z: pos.z.toFixed(2)}, 
+                    'Grounded:', this.isGrounded);
+    }
+
+     if (isJumping) {
+        console.log('Jump state:', { 
+            grounded: this.isGrounded, 
+            posY: pos.y.toFixed(2), 
+            velY: this.body.linvel().y.toFixed(2) 
+        });
+    }
+}
     
     handleStamina(deltaTime) {
         const isSprinting = this.inputHandler.isSprinting();
@@ -145,8 +178,17 @@ export class Player {
         
         if (isSprinting && isMoving) {
             this.gameManager.updatePlayerStamina(-30 * deltaTime);
+        } else if (this.isBlocking) {
+            this.gameManager.updatePlayerStamina(-15 * deltaTime);
         } else {
             this.gameManager.updatePlayerStamina(20 * deltaTime);
+        }
+
+        // Auto-stop blocking if no stamina
+        if (this.isBlocking && this.gameManager.playerData.stamina <= 0) {
+            this.isBlocking = false;
+            this.gameManager.playerData.isBlocking = false;
+            console.log('💨 Out of stamina - blocking disabled');
         }
     }
     
