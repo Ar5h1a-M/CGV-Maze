@@ -59,7 +59,7 @@ export class Player {
         const colliderDesc = RAPIER.ColliderDesc.capsule(0.15, 0.2); // Much smaller
         this.collider = this.world.createCollider(colliderDesc, this.body);
         
-        // Setup camera - use the scene's camera
+        // Camera
         this.camera = this.scene.camera;
         if (this.camera && this.renderer) {
             this.cameraController = new CameraController(this.camera, this.renderer.domElement);
@@ -78,12 +78,12 @@ export class Player {
         const position = this.body.translation();
         this.mesh.position.set(position.x, position.y, position.z);
         
-        // Update camera controller - this handles both mouse look and camera positioning
+        // Camera controller update
         if (this.cameraController) {
             this.cameraController.update(deltaTime, this.mesh.position);
         }
         
-        // Update blocking state
+        // Update blocking
         this.isBlocking = this.inputHandler.isBlocking();
 
          // Sync blocking state with GameManager
@@ -102,19 +102,22 @@ export class Player {
             }
         }
         
-        // Handle movement
+        // Movement & stamina
         this.handleMovement(deltaTime);
-        
-        // Handle stamina
         this.handleStamina(deltaTime);
         
-        // Handle item usage
+        // Item usage
         this.handleItems();
         
-        // Debug: log camera position occasionally
-        if (Math.random() < 0.02 && this.camera) { // 2% chance per frame
-            console.log('Player pos:', this.mesh.position, 'Camera pos:', this.camera.position);
-        }
+        // Update gameManager with player state (for HUD + minimap)
+        this.gameManager.playerData.position = {
+            x: this.mesh.position.x,
+            y: this.mesh.position.y,
+            z: this.mesh.position.z
+        };
+        this.gameManager.playerData.rotation = {
+            y: this.camera ? this.camera.rotation.y : 0
+        };
     }
     
     handleMovement(deltaTime) {
@@ -190,14 +193,14 @@ export class Player {
     }
     
     handleItems() {
-        // Check number keys 1-5 for item selection
+        // Number keys for selection
         for (let i = 0; i < 5; i++) {
             if (this.inputHandler.isKeyPressed(`Digit${i + 1}`)) {
                 this.selectItem(i);
             }
         }
         
-        // E key to use item
+        // Use item
         if (this.inputHandler.isKeyPressed('KeyE') && this.currentItem) {
             this.useCurrentItem();
         }
@@ -212,7 +215,9 @@ export class Player {
     
     useCurrentItem() {
         if (this.currentItem) {
-            this.gameManager.useInventoryItem(this.gameManager.playerData.inventory.indexOf(this.currentItem));
+            this.gameManager.useInventoryItem(
+                this.gameManager.playerData.inventory.indexOf(this.currentItem)
+            );
             this.currentItem = null;
         }
     }
