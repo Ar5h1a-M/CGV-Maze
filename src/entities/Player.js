@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import RAPIER from "@dimforge/rapier3d-compat";
 import { InputHandler } from '../utils/InputHandler.js';
 import { CameraController } from '../utils/CameraController.js';
+import Flashlight from './Flashlight.js'; // <<< NEW
 
 export class Player {
     constructor(scene, world, gameManager, renderer) {
@@ -30,6 +31,11 @@ export class Player {
         this.isBlocking = false;
         this.currentItem = null;
 
+        // Flashlight
+        this.flashlight = null;   // SpotLight helper
+        this.hasFlashlight = false;
+        this._prevE = false;      // edge detection
+        this._prevF = false;
         // For third-person rotation
         this.targetRotation = 0;
         this.rotationSpeed = 0.15;
@@ -80,6 +86,10 @@ export class Player {
             console.error('Camera or renderer not available for player!');
         }
         
+        // Flashlight (mounted to camera, OFF until picked up)
+        this.flashlight = new Flashlight(this.camera);
+        
+        console.log('Player spawned');
         console.log('Player spawned at proper height');
     }
      createPlayerVisuals() {
@@ -170,6 +180,9 @@ export class Player {
         
         // Item usage
         this.handleItems();
+
+        // Flashlight pickup/toggle/battery HUD
+        this._flashlightControls(deltaTime);
         
         // Update gameManager with player state (for HUD + minimap)
         this.gameManager.playerData.position = {
@@ -323,5 +336,48 @@ export class Player {
                 }
             }, 200);
         }
+    }
+
+    // ===== FLASHLIGHT =====
+    _flashlightControls(dt) {
+        if (!this.flashlight) return;
+
+        // Edge-detect E to PICK UP nearby flashlight item
+        const eNow = this.inputHandler.isKeyPressed('KeyE');
+        if (eNow && !this._prevE && !this.hasFlashlight) {
+            const found = this._findNearby('item:flashlight', 1.2);
+            if (found) {
+                found.parent?.remove(found);
+                this.hasFlashlight = true;
+                this.flashlight.enabled = true;
+
+                // add to inventory so HUD can show it
+                if (this.gameManager?.playerData?.inventory) {
+                    this.gameManager.playerData.inventory.push({ type: 'flashlight' });
+                }
+            }
+        }
+        this._prevE = eNow;
+
+        // Edge-detect F to TOGGLE beam
+        const fNow = this.inputHandler.isKeyPressed('KeyF');
+        if (fNow && !this._prevF && this.hasFlashlight) {
+            const on = this.flashlight.toggle();
+            this.gameManager?.hud?.setBattery?.(this.flashlight.percent, on);
+        }
+        this._prevF = fNow;
+
+        // Battery tick + HUD update
+        this.flashlight.update(dt);
+        this.gameManager?.hud?.setBattery?.(this.flashlight.percent, this.flashlight.on);
+    }
+
+    _findNearby(name, radius = 1.2) {
+        const me = this.mesh.position;
+        let hit = null;
+        this.scene.traverse(o => {
+            if (!hit && o.isMesh && o.name === name && o.position.distanceTo(me) <= radius) hit = o;
+        });
+        return hit;
     }
 }

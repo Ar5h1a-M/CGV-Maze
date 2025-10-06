@@ -30,6 +30,7 @@ export class HUD {
         this.createTimer();
         this.createMinimap();
         this.createInventory();
+        this._createBattery();
 
         document.body.appendChild(this.container);
     }
@@ -141,14 +142,25 @@ export class HUD {
             position: absolute;
             bottom: 20px;
             left: 20px;
-            width: 150px;
-            height: 150px;
+            width: ${this._mmSizePx}px;
+            height: ${this._mmSizePx}px;
             background: rgba(0, 0, 0, 0.7);
             border: 2px solid #8b0000;
             border-radius: 50%;
             overflow: hidden;
         `;
         
+        // Canvas inside the circle
+        this._mmCanvas = document.createElement('canvas');
+        this._mmCanvas.width = this._mmSizePx;
+        this._mmCanvas.height = this._mmSizePx;
+        Object.assign(this._mmCanvas.style, {
+            width: `${this._mmSizePx}px`,
+            height: `${this._mmSizePx}px`,
+            imageRendering: 'pixelated'
+        });
+        this._mmCtx = this._mmCanvas.getContext('2d');
+
         const minimapLabel = document.createElement('div');
         minimapLabel.style.cssText = `
             position: absolute;
@@ -179,6 +191,25 @@ export class HUD {
         this.minimap.appendChild(minimapLabel);
         this.minimap.appendChild(this.minimapCanvas);
         this.container.appendChild(this.minimap);
+    }
+
+    _createBattery() {
+        this._batteryEl = document.createElement('div');
+        this._batteryEl.style.cssText = `
+            position: absolute;
+            top: 100px;
+            left: 20px;
+            color: #ffeb99;
+            text-shadow: 1px 1px 2px black;
+            background: rgba(0,0,0,.4);
+            padding: 4px 8px;
+            border-radius: 4px;
+        `;
+        this._batteryEl.textContent = 'Flash: 100% OFF';
+        this.container.appendChild(this._batteryEl);
+    }
+    setBattery(percent, on) {
+        if (this._batteryEl) this._batteryEl.textContent = `Flash: ${percent}% ${on ? 'ON' : 'OFF'}`;
     }
     
     createInventory() {
@@ -454,9 +485,9 @@ export class HUD {
         switch(type) {
             case 'flashlight': return 'rgba(255, 255, 0, 0.3)';
             case 'trenchcoat': return 'rgba(139, 69, 19, 0.3)';
-            case 'carrot': return 'rgba(255, 102, 0, 0.3)';
-            case 'note': return 'rgba(255, 255, 255, 0.3)';
-            default: return 'rgba(255, 255, 255, 0.1)';
+            case 'carrot':     return 'rgba(255, 102, 0, 0.3)';
+            case 'note':       return 'rgba(255, 255, 255, 0.3)';
+            default:           return 'rgba(255, 255, 255, 0.1)';
         }
     }
     
@@ -464,9 +495,9 @@ export class HUD {
         switch(type) {
             case 'flashlight': return '🔦';
             case 'trenchcoat': return '🧥';
-            case 'carrot': return '🥕';
-            case 'note': return '📝';
-            default: return '?';
+            case 'carrot':     return '🥕';
+            case 'note':       return '📝';
+            default:           return '?';
         }
     }
 

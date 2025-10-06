@@ -127,6 +127,7 @@ export class MazeRenderer {
         const posX = position.x - mazeSize/2;
         const posZ = position.z - mazeSize/2;
         portal.position.set(posX, 1.5, posZ);
+        portal.name = 'exit:portal'; // <<< tag exit (optional)
         this.scene.add(portal);
         this.walls.push(portal);
 
@@ -138,6 +139,11 @@ export class MazeRenderer {
     }
 
     populateMaze(mazeData) {
+        // Place items (flashlight + carrot)
+        this.placeItem(mazeData, { type: 'flashlight', color: 0xffff00 });
+        this.placeItem(mazeData, { type: 'carrot',     color: 0xff6600 });
+        
+        console.log('Maze populated with items');
         this.placeItem(mazeData, { type: 'flashlight', color: 0xffff00 });
         this.placeItem(mazeData, { type: 'skull', color: 0xffffff });
         console.log('Items placed with horror theme');
@@ -163,6 +169,11 @@ export class MazeRenderer {
             const posX = spot.x - mazeData.size/2;
             const posZ = spot.z - mazeData.size/2;
             itemMesh.position.set(posX, 0.5, posZ);
+
+            // <<< tag so Player can detect & pick up by type
+            itemMesh.name = `item:${item.type}`;
+            itemMesh.userData.type = item.type;
+
             this.scene.add(itemMesh);
             this.walls.push(itemMesh);
 
