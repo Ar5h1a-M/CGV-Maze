@@ -53,6 +53,9 @@ export class Item {
         this.mesh.rotation.copy(itemStats.rotation);
         this.mesh.castShadow = true;
         this.mesh.receiveShadow = true;
+
+        // --- ADD (optional): tag for debug/inspection ---
+        this.mesh.name = `item:${this.type}`;
         
         // Add floating animation
         this.startY = this.mesh.position.y;

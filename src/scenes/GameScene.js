@@ -25,18 +25,35 @@ export class GameScene {
         this.items = [];
         this.traps = [];
         this.portal = null;
-        this.hasWon = false; // <-- ADD: Win flag
+        this.hasWon = false;
+
+        // --- ADD: remember baseline fog so we can expand it with flashlight ---
+        this._baseFog = { near: 1, far: 5 };
+        // holders for flashlight lights
+        this.flashlight = null;
+        this.flashFill = null;
     }
     
     async init(gameManager, uiManager, renderer = null) {
         this.gameManager = gameManager;
         this.uiManager = uiManager;
         this.renderer = renderer;
+
+        // --- ADD: initialize flashlight flags ---
+        this.gameManager.flashlightActive = false;
+        this.gameManager.hasFlashlight = false;
+
+        // (Optional but helps light feel brighter with PBR materials)
+        if (this.renderer) {
+            this.renderer.physicallyCorrectLights = true;
+            // a tiny boost makes standard materials read better in dark scenes
+            this.renderer.toneMappingExposure = 1.2;
+        }
         
         // Create scene
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x0a0a0a);
-        this.scene.fog = new THREE.Fog(0x0a0a0a, 1, 5);
+        this.scene.fog = new THREE.Fog(0x0a0a0a, this._baseFog.near, this._baseFog.far);
         
         // Create camera
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -158,6 +175,15 @@ export class GameScene {
                 const collectedItem = item.collect();
                 if (collectedItem && this.gameManager.addToInventory(collectedItem)) {
                     console.log(`🎒 Added ${collectedItem.type} to inventory`);
+
+                    // --- ADD: mark flashlight ownership so Player can toggle with F ---
+                    if (collectedItem.type === 'flashlight') {
+                        this.player.hasFlashlight = true;
+                        this.gameManager.hasFlashlight = true;
+                        // If you want it on as soon as you pick it up, uncomment:
+                        // this.gameManager.flashlightActive = true;
+                    }
+
                     return false;
                 }
             }
@@ -213,7 +239,7 @@ export class GameScene {
     }
 
     winGame() {
-        if (this.hasWon) return; // <-- PREVENT multiple calls
+        if (this.hasWon) return;
         this.hasWon = true;
 
         console.log('🎉 Player reached the portal! Level completed!');
@@ -274,12 +300,22 @@ export class GameScene {
     }
 
     setupFlashlightEffect() {
-        this.flashlight = new THREE.SpotLight(0xffffcc, 1, 15, Math.PI / 4, 0.5, 1);
+        // --- UPDATED: stronger, wider, shadow-casting spotlight attached to camera ---
+        this.flashlight = new THREE.SpotLight(0xffffee, /*intensity*/ 8, /*distance*/ 40, /*angle*/ Math.PI / 3, /*penumbra*/ 0.25, /*decay*/ 1);
+        this.flashlight.castShadow = true;
+        this.flashlight.shadow.mapSize.set(1024, 1024);
+        this.flashlight.shadow.bias = -0.0001;
+
         this.flashlight.position.set(0, 0, 0);
         this.flashlight.target.position.set(0, 0, -1);
         this.flashlight.visible = false;
         this.camera.add(this.flashlight);
         this.camera.add(this.flashlight.target);
+
+        // --- ADD: gentle fill so the floor/walls right by you brighten up ---
+        this.flashFill = new THREE.PointLight(0xffffcc, 0.6, 6, 1); // small radius, subtle
+        this.flashFill.visible = false;
+        this.camera.add(this.flashFill);
     }
 
     update() {
@@ -294,9 +330,24 @@ export class GameScene {
             this.checkItemCollection();
             this.checkEnemyAttacks();
             this.checkTrapCollisions();
-            this.checkPortalWin(); // <-- Only triggers once now
+            this.checkPortalWin();
         }
-        if (this.flashlight && this.gameManager) this.flashlight.visible = this.gameManager.flashlightActive;
+
+        // --- ADD: sync light visibility + relax fog while flashlight is ON ---
+        const lit = !!(this.gameManager && this.gameManager.flashlightActive);
+        if (this.flashlight) this.flashlight.visible = lit;
+        if (this.flashFill) this.flashFill.visible = lit;
+
+        if (this.scene && this.scene.fog) {
+            if (lit) {
+                this.scene.fog.near = 0.5;
+                this.scene.fog.far  = 25;  // farther so the light actually reveals distance
+            } else {
+                this.scene.fog.near = this._baseFog.near;
+                this.scene.fog.far  = this._baseFog.far;
+            }
+        }
+
         this.enemies.forEach(enemy => { if (enemy.isAlive && this.player) enemy.update(deltaTime, this.player.mesh.position); });
         this.items.forEach(item => item.update(deltaTime));
         this.gameManager.update(deltaTime);
