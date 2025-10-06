@@ -1,3 +1,5 @@
+//src\utils\InputHandler.js
+
 export class InputHandler {
     constructor() {
         this.keys = new Set();
@@ -111,6 +113,10 @@ export class InputHandler {
     
     isBlocking() {
         return this.isKeyPressed('KeyB');
+    }
+
+    isCameraSwitchPressed() {
+        return this.isKeyPressed('KeyV');
     }
     
     getMouseMovement() {

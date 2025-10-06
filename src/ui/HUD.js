@@ -5,17 +5,11 @@ export class HUD {
         this.healthBar = null;
         this.staminaBar = null;
         this.minimap = null;
-
-        // Minimap (canvas-based inside your circular frame)
-        this._mmCanvas = null;
-        this._mmCtx = null;
-        this._mmSizePx = 150;
-        this._mmPadding = 6;
-        this._grid = null; this._size = 0; this._start = null; this._end = null;
-        this._visited = new Set();
-
-        // Battery HUD
-        this._batteryEl = null;
+        this.minimapCanvas = null;
+        this.minimapCtx = null;
+        this.mazeData = null;
+        this.discoveredAreas = new Set();
+        this.cellSize = 0;
     }
 
     create() {
@@ -177,12 +171,25 @@ export class HUD {
             color: #8b0000;
             font-size: 12px;
             font-weight: bold;
-            pointer-events: none;
+            z-index: 10;
         `;
         minimapLabel.textContent = 'MINIMAP';
         
-        this.minimap.appendChild(this._mmCanvas);
+        this.minimapCanvas = document.createElement('canvas');
+        this.minimapCanvas.width = 150;
+        this.minimapCanvas.height = 150;
+        this.minimapCanvas.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        `;
+        
+        this.minimapCtx = this.minimapCanvas.getContext('2d');
+        
         this.minimap.appendChild(minimapLabel);
+        this.minimap.appendChild(this.minimapCanvas);
         this.container.appendChild(this.minimap);
     }
 
@@ -242,118 +249,220 @@ export class HUD {
         this.container.appendChild(inventory);
     }
 
-    // ==== MINIMAP API (called by GameScene) ====
-    buildMinimap(mazeData) {
-        this._grid = mazeData.grid;
-        this._size = mazeData.size;
-        this._start = mazeData.start;
-        this._end = mazeData.end;
-        this._visited.clear();
-        this._drawMinimapBase();
+    // -------------------------
+    // Mini-map methods
+    // -------------------------
+    setMazeData(mazeData) {
+        this.mazeData = {
+            grid: mazeData.grid,
+            width: mazeData.size,
+            height: mazeData.size,
+            start: { x: mazeData.start.x, y: mazeData.start.z },
+            end: { x: mazeData.end.x, y: mazeData.end.z }
+        };
+        this.calculateCellSize();
     }
 
-    _drawMinimapBase() {
-        const c = this._mmCtx;
-        if (!c || !this._grid) return;
+    calculateCellSize() {
+        if (!this.mazeData) return;
+        const maxDimension = Math.max(this.mazeData.width, this.mazeData.height);
+        this.cellSize = 130 / maxDimension;
+    }
 
-        const inner = this._mmSizePx - this._mmPadding*2;
-        const cs = Math.max(3, Math.floor(inner / this._size));
+    updateDiscoveredAreas(areas) {
+        if (!areas) return;
+        this.discoveredAreas = new Set(areas.map(area => `${area.x},${area.y}`));
+    }
 
-        c.clearRect(0,0,this._mmCanvas.width,this._mmCanvas.height);
-        c.fillStyle = 'rgba(12,12,18,0.6)';
-        c.fillRect(0,0,this._mmCanvas.width,this._mmCanvas.height);
+    updateMinimap(playerPosition, playerRotation) {
+        if (!this.mazeData || !this.minimapCtx) return;
 
-        const drawCell = (gx,gz,fn) => {
-            const x = this._mmPadding + gx*cs;
-            const y = this._mmPadding + gz*cs;
-            c.save(); c.translate(x,y); fn(c,cs); c.restore();
-        };
-
-        // Walls
-        for (let z=0; z<this._size; z++){
-            for (let x=0; x<this._size; x++){
-                if (this._grid[z][x] === 1) {
-                    drawCell(x,z,(ctx,cs2)=>{
-                        ctx.fillStyle = 'rgba(180,200,200,0.35)';
-                        ctx.fillRect(0,0,cs2,cs2);
-                    });
+        const ctx = this.minimapCtx;
+        const centerX = 75;
+        const centerY = 75;
+        
+        // Clear canvas
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.fillRect(0, 0, 150, 150);
+        
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 73, 0, Math.PI * 2);
+        ctx.clip();
+        
+        // Convert world position to grid position
+        const playerGridX = Math.floor(playerPosition.x + this.mazeData.width / 2);
+        const playerGridY = Math.floor(playerPosition.z + this.mazeData.height / 2);
+        
+        // Draw maze
+        for (let y = 0; y < this.mazeData.height; y++) {
+            for (let x = 0; x < this.mazeData.width; x++) {
+                if (!this.isDiscovered(x, y)) continue;
+                
+                const relX = x - playerGridX;
+                const relY = y - playerGridY;
+                
+                const cos = Math.cos(-playerRotation.y);
+                const sin = Math.sin(-playerRotation.y);
+                const rotatedX = relX * cos - relY * sin;
+                const rotatedY = relX * sin + relY * cos;
+                
+                const drawX = centerX + rotatedX * this.cellSize;
+                const drawY = centerY + rotatedY * this.cellSize;
+                
+                if (this.isInMinimapBounds(drawX, drawY)) {
+                    if (this.mazeData.grid[y][x] === 1) {
+                        ctx.fillStyle = 'rgba(139, 0, 0, 0.8)'; // Wall
+                        ctx.fillRect(drawX - this.cellSize/2, drawY - this.cellSize/2, this.cellSize, this.cellSize);
+                    } else if (x === this.mazeData.end.x && y === this.mazeData.end.y) {
+                        ctx.fillStyle = 'rgba(0, 255, 0, 0.8)'; // Exit
+                        ctx.fillRect(drawX - this.cellSize/2, drawY - this.cellSize/2, this.cellSize, this.cellSize);
+                    } else {
+                        ctx.fillStyle = 'rgba(100, 100, 100, 0.5)'; // Path
+                        ctx.fillRect(drawX - this.cellSize/2, drawY - this.cellSize/2, this.cellSize, this.cellSize);
+                    }
                 }
             }
         }
-
-        // Exit
-        drawCell(this._end.x,this._end.z,(ctx,cs2)=>{
-            ctx.fillStyle = 'rgba(0,255,180,0.9)';
-            ctx.fillRect(2,2,cs2-4,cs2-4);
-        });
-
-        // Start
-        drawCell(this._start.x,this._start.z,(ctx,cs2)=>{
-            ctx.strokeStyle='rgba(255,255,255,0.7)';
-            ctx.lineWidth=1; ctx.strokeRect(2,2,cs2-4,cs2-4);
-        });
-
-        // Breadcrumbs already visited
-        this._visited.forEach(k=>{
-            const [gx,gz]=k.split(',').map(n=>+n);
-            drawCell(gx,gz,(ctx,cs2)=>{
-                ctx.fillStyle='rgba(255,238,150,0.7)';
-                ctx.fillRect(1,1,cs2-2,cs2-2);
-            });
-        });
+        
+        // Player dot
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Direction arrow
+        const dirLen = 8;
+        const endX = centerX + Math.sin(playerRotation.y) * dirLen;
+        const endY = centerY - Math.cos(playerRotation.y) * dirLen;
+        ctx.strokeStyle = '#ffff00';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+        
+        ctx.restore();
+        this.drawCompass(playerRotation);
     }
 
-    updateMinimap(mazeData, playerPos) {
-        if (!this._grid || !playerPos) return;
+    drawCompass(playerRotation) {
+        const ctx = this.minimapCtx;
+        const centerX = 75;
+        const topY = 25;
+        
+        ctx.save();
+        ctx.translate(centerX, topY);
+        ctx.rotate(playerRotation.y);
+        
+        ctx.fillStyle = '#8b0000';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('N', 0, 0);
+        
+        ctx.restore();
+    }
 
-        const gx = Math.round(playerPos.x + this._size/2);
-        const gz = Math.round(playerPos.z + this._size/2);
-        const inside = (gx>=0 && gx<this._size && gz>=0 && gz<this._size);
+    isDiscovered(x, y) {
+        if (this.discoveredAreas.size === 0) return true; // Debug: show all
+        return this.discoveredAreas.has(`${x},${y}`);
+    }
 
-        if (inside && this._grid[gz][gx]===0) {
-            const k = `${gx},${gz}`;
-            if (!this._visited.has(k)) {
-                this._visited.add(k);
-            }
-        }
+    isInMinimapBounds(x, y) {
+        const centerX = 75;
+        const centerY = 75;
+        const radius = 73;
+        const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+        return distance <= radius;
+    }
 
-        // Redraw base then player dot on top (small canvas, cheap)
-        this._drawMinimapBase();
+    // -------------------------
+    // HUD update loop
+    // -------------------------
+    createBlockingIndicator() {
+        const blockingIndicator = document.createElement('div');
+        blockingIndicator.style.cssText = `
+            position: absolute;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 139, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            display: none;
+        `;
+        blockingIndicator.id = 'blocking-indicator';
+        blockingIndicator.textContent = 'BLOCKING';
+        this.container.appendChild(blockingIndicator);
+    }
 
-        const c = this._mmCtx;
-        const inner = this._mmSizePx - this._mmPadding*2;
-        const cs = Math.max(3, Math.floor(inner / this._size));
-        const x = this._mmPadding + gx*cs + cs/2;
-        const y = this._mmPadding + gz*cs + cs/2;
-        c.fillStyle='rgba(255,90,90,0.95)';
-        const r=Math.max(2,Math.floor(cs*0.3));
-        c.beginPath(); c.arc(x,y,r,0,Math.PI*2); c.fill();
+    createFlashlightIndicator() {
+        const indicator = document.createElement('div');
+        indicator.style.cssText = `
+            position: absolute;
+            top: 100px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #ffff00;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+        `;
+        indicator.id = 'flashlight-indicator';
+        indicator.textContent = '🔦 OFF';
+        this.container.appendChild(indicator);
     }
 
     update() {
-        // Update health bar
+        // Health
         if (this.healthBar) {
-            const healthPercent = (this.gameManager.playerData.health / this.gameManager.playerData.maxHealth) * 100;
-            this.healthBar.style.width = `${healthPercent}%`;
+            const percent = (this.gameManager.playerData.health / this.gameManager.playerData.maxHealth) * 100;
+            this.healthBar.style.width = `${percent}%`;
         }
         
-        // Update stamina bar
+        // Stamina
         if (this.staminaBar) {
-            const staminaPercent = (this.gameManager.playerData.stamina / this.gameManager.playerData.maxStamina) * 100;
-            this.staminaBar.style.width = `${staminaPercent}%`;
+            const percent = (this.gameManager.playerData.stamina / this.gameManager.playerData.maxStamina) * 100;
+            this.staminaBar.style.width = `${percent}%`;
         }
         
-        // Update timer
+        // Timer
         const timer = document.getElementById('game-timer');
         if (timer) {
             const time = this.gameManager.playerData.time;
             const minutes = Math.floor(time / 60);
             const seconds = Math.floor(time % 60);
-            timer.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            timer.textContent = `${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')}`;
         }
         
-        // Update inventory display
+        // Minimap
+        if (this.gameManager.playerData && this.mazeData) {
+            const playerPosition = this.gameManager.playerData.position || { x: 0, y: 0, z: 0 };
+            const playerRotation = this.gameManager.playerData.rotation || { y: 0 };
+            this.updateMinimap(playerPosition, playerRotation);
+        }
+        
+        // Inventory
         this.updateInventory();
+
+        // Update blocking indicator
+        const blockingIndicator = document.getElementById('blocking-indicator');
+        if (blockingIndicator) {
+            const isBlocking = this.gameManager.playerData.isBlocking || false;
+            blockingIndicator.style.display = isBlocking ? 'block' : 'none';
+        }
+        
+        // Update flashlight indicator
+        const flashlightIndicator = document.getElementById('flashlight-indicator');
+        if (!flashlightIndicator) {
+            this.createFlashlightIndicator();
+        } else {
+            flashlightIndicator.textContent = this.gameManager.flashlightActive ? '🔦 ON' : '🔦 OFF';
+        }
     }
     
     updateInventory() {

@@ -12,6 +12,9 @@ export class GameManager {
             time: 0
         };
         this.gameState = 'menu'; // menu, playing, paused, gameOver
+        this.flashlightActive = false;
+        this.visibilityBoost = 3;
+        this.playerData.isBlocking = false;
     }
     
     setSceneManager(sceneManager) {
@@ -47,6 +50,18 @@ export class GameManager {
     updatePlayerStamina(change) {
         this.playerData.stamina = Math.max(0, Math.min(this.playerData.maxStamina, this.playerData.stamina + change));
     }
+
+    activateFlashlight() {
+        this.flashlightActive = true;
+        this.visibilityBoost = 3.0; // Additional visibility radius
+        console.log('🔦 Flashlight activated! Increased visibility');
+    }
+
+    deactivateFlashlight() {
+        this.flashlightActive = false;
+        this.visibilityBoost = 0;
+        console.log('🔦 Flashlight deactivated');
+    }
     
     addToInventory(item) {
         const emptySlot = this.playerData.inventory.findIndex(slot => slot === null);
@@ -56,15 +71,39 @@ export class GameManager {
         }
         return false;
     }
-    
+
     useInventoryItem(slot) {
-        if (this.playerData.inventory[slot]) {
-            const item = this.playerData.inventory[slot];
+        const item = this.playerData.inventory[slot];
+        if (item) {
+            switch(item.type) {
+                case 'flashlight':
+                    if (!this.flashlightActive) {
+                    this.activateFlashlight();
+                    } else {
+                        this.deactivateFlashlight();
+                    }
+                    console.log('Used flashlight - visibility increased');
+                    // Don't remove from inventory - flashlight is toggleable
+                    return item;
+                case 'trenchcoat':
+                    // Reduce ambient damage
+                    console.log('Used trenchcoat - ambient damage reduced');
+                    break;
+                case 'carrot':
+                    this.updatePlayerHealth(25);
+                    console.log('Used carrot - healed 25 HP');
+                    break;
+                case 'note':
+                    console.log('Read note - lore revealed');
+                    break;
+            }
             this.playerData.inventory[slot] = null;
             return item;
         }
         return null;
     }
+    
+
     
     gameOver() {
         this.gameState = 'gameOver';
@@ -88,35 +127,6 @@ export class GameManager {
         }
     }
 
-    // Add to GameManager class
-addItemToInventory(itemType) {
-    const item = { type: itemType };
-    return this.addToInventory(item);
-}
 
-useInventoryItem(slot) {
-    const item = this.playerData.inventory[slot];
-    if (item) {
-        switch(item.type) {
-            case 'flashlight':
-                // Increase visibility radius
-                console.log('Used flashlight - visibility increased');
-                break;
-            case 'trenchcoat':
-                // Reduce ambient damage
-                console.log('Used trenchcoat - ambient damage reduced');
-                break;
-            case 'carrot':
-                this.updatePlayerHealth(15);
-                console.log('Used carrot - healed 15 HP');
-                break;
-            case 'note':
-                console.log('Read note - lore revealed');
-                break;
-        }
-        this.playerData.inventory[slot] = null;
-        return item;
-    }
-    return null;
-}
+
 }
