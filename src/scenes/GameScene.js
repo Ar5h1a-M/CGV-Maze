@@ -320,6 +320,10 @@ export class GameScene {
 
     update() {
         const deltaTime = this.clock.getDelta();
+        // Don't update game logic if player is dead
+        if (this.gameManager?.isPlayerDead) {
+            return;
+        }
         if (this.world) this.world.step();
         if (this.player) {
             this.player.update(deltaTime);

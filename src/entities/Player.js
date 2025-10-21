@@ -284,6 +284,12 @@ export class Player {
     update(deltaTime) {
         if (!this.body || !this.mesh) return;
 
+        // Don't update player if dead
+        if (this.gameManager?.isPlayerDead) {
+            // You could add death animations here if needed
+            return;
+        }
+
         // Sync transform from physics
         const position = this.body.translation();
         this.mesh.position.set(position.x, position.y, position.z);
@@ -342,46 +348,66 @@ export class Player {
     }
 
     handleMovement(deltaTime) {
-        const movement = this.inputHandler.getMovementVector(this.cameraController);
-        const isSprinting = this.inputHandler.isSprinting();
-        const isJumping = this.inputHandler.isJumping();
-
-        const currentSpeed = isSprinting ? this.sprintSpeed : this.moveSpeed;
-        this.velocity.x = movement.x * currentSpeed;
-        this.velocity.z = movement.z * currentSpeed;
-
-        if (isJumping && this.isGrounded) {
-            this.body.applyImpulse({ x: 0, y: this.jumpForce, z: 0 }, true);
-            this.isGrounded = false;
-            this.gameManager.updatePlayerStamina(-10);
+    // Don't process movement if player is dead
+    if (this.gameManager?.isPlayerDead) {
+        // Stop all movement
+        this.velocity.x = 0;
+        this.velocity.z = 0;
+        if (this.body) {
+            this.body.setLinvel({ x: 0, y: this.body.linvel().y, z: 0 }, true);
         }
-
-        this.body.setLinvel({ x: this.velocity.x, y: this.body.linvel().y, z: this.velocity.z }, true);
-
-        const pos = this.body.translation();
-        const isOnGround = pos.y <= 1.1 && Math.abs(this.body.linvel().y) < 0.1;
-        if (isOnGround && !this.isGrounded) this.isGrounded = true;
-        else if (!isOnGround && this.isGrounded) this.isGrounded = false;
+        return;
     }
 
-    handleStamina(deltaTime) {
-        const isSprinting = this.inputHandler.isSprinting();
-        const movement = this.inputHandler.getMovementVector(this.cameraController);
-        const isMoving = movement.x !== 0 || movement.z !== 0;
+    const movement = this.inputHandler.getMovementVector(this.cameraController);
+    const isSprinting = this.inputHandler.isSprinting();
+    const isJumping = this.inputHandler.isJumping();
 
-        if (isSprinting && isMoving) {
-            this.gameManager.updatePlayerStamina(-30 * deltaTime);
-        } else if (this.isBlocking) {
-            this.gameManager.updatePlayerStamina(-15 * deltaTime);
-        } else {
-            this.gameManager.updatePlayerStamina(20 * deltaTime);
-        }
+    // Check if player has enough stamina to sprint
+    const canSprint = this.gameManager.playerData.stamina > 1;
+    const currentSpeed = (isSprinting && canSprint) ? this.sprintSpeed : this.moveSpeed;
+    
+    this.velocity.x = movement.x * currentSpeed;
+    this.velocity.z = movement.z * currentSpeed;
 
-        if (this.isBlocking && this.gameManager.playerData.stamina <= 0) {
-            this.isBlocking = false;
-            this.gameManager.playerData.isBlocking = false;
-        }
+    if (isJumping && this.isGrounded) {
+        this.body.applyImpulse({ x: 0, y: this.jumpForce, z: 0 }, true);
+        this.isGrounded = false;
+        this.gameManager.updatePlayerStamina(-10);
     }
+
+    this.body.setLinvel({ x: this.velocity.x, y: this.body.linvel().y, z: this.velocity.z }, true);
+
+    const pos = this.body.translation();
+    const isOnGround = pos.y <= 1.1 && Math.abs(this.body.linvel().y) < 0.1;
+    if (isOnGround && !this.isGrounded) this.isGrounded = true;
+    else if (!isOnGround && this.isGrounded) this.isGrounded = false;
+}
+
+handleStamina(deltaTime) {
+    // Don't process stamina if player is dead
+    if (this.gameManager?.isPlayerDead) return;
+
+    const isSprinting = this.inputHandler.isSprinting();
+    const movement = this.inputHandler.getMovementVector(this.cameraController);
+    const isMoving = movement.x !== 0 || movement.z !== 0;
+
+    // Only allow sprinting if stamina is available
+    const canSprint = this.gameManager.playerData.stamina > 0;
+
+    if (isSprinting && isMoving && canSprint) {
+        this.gameManager.updatePlayerStamina(-30 * deltaTime);
+    } else if (this.isBlocking) {
+        this.gameManager.updatePlayerStamina(-15 * deltaTime);
+    } else {
+        this.gameManager.updatePlayerStamina(20 * deltaTime);
+    }
+
+    if (this.isBlocking && this.gameManager.playerData.stamina <= 0) {
+        this.isBlocking = false;
+        this.gameManager.playerData.isBlocking = false;
+    }
+}
 
     handleItems() {
         for (let i = 0; i < 5; i++) {

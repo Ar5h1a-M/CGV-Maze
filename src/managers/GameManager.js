@@ -15,6 +15,7 @@ export class GameManager {
         this.flashlightActive = false;
         this.visibilityBoost = 3;
         this.playerData.isBlocking = false;
+        this.isPlayerDead = false; // Add this flag
     }
     
     setSceneManager(sceneManager) {
@@ -25,6 +26,7 @@ export class GameManager {
         this.currentDifficulty = difficulty;
         this.resetPlayerData();
         this.gameState = 'playing';
+        this.isPlayerDead = false; // Reset death flag
         this.sceneManager.switchToScene('game');
     }
     
@@ -36,24 +38,56 @@ export class GameManager {
             maxStamina: 100,
             inventory: new Array(5).fill(null),
             score: 0,
-            time: 0
+            time: 0,
+            isBlocking: false
         };
+        this.isPlayerDead = false;
     }
     
     updatePlayerHealth(change) {
+        if (this.isPlayerDead) return; // Don't process health changes if already dead
+        
         this.playerData.health = Math.max(0, Math.min(this.playerData.maxHealth, this.playerData.health + change));
-        if (this.playerData.health <= 0) {
-            this.gameOver();
+        
+        // Check for death
+        if (this.playerData.health <= 0 && !this.isPlayerDead) {
+            this.playerDied();
         }
     }
     
     updatePlayerStamina(change) {
         this.playerData.stamina = Math.max(0, Math.min(this.playerData.maxStamina, this.playerData.stamina + change));
+        
+        // Auto-disable sprint if stamina runs out
+        if (this.playerData.stamina <= 0) {
+            this.disableSprinting();
+        }
     }
 
+    playerDied() {
+        if (this.isPlayerDead) return; // Prevent multiple death triggers
+        
+        this.isPlayerDead = true;
+        this.gameState = 'gameOver';
+        
+        console.log('💀 Player died!');
+        
+        // Show death message and return to menu
+        setTimeout(() => {
+            alert('YOU DIED');
+            this.sceneManager.switchToScene('menu');
+        }, 500);
+    }
+
+    disableSprinting() {
+        // This will be used by the Player class to disable sprinting
+        // We'll handle the actual sprint disabling in the Player.js update
+    }
+
+    // ... rest of your existing methods remain the same ...
     activateFlashlight() {
         this.flashlightActive = true;
-        this.visibilityBoost = 3.0; // Additional visibility radius
+        this.visibilityBoost = 3.0;
         console.log('🔦 Flashlight activated! Increased visibility');
     }
 
@@ -83,10 +117,8 @@ export class GameManager {
                         this.deactivateFlashlight();
                     }
                     console.log('Used flashlight - visibility increased');
-                    // Don't remove from inventory - flashlight is toggleable
                     return item;
                 case 'trenchcoat':
-                    // Reduce ambient damage
                     console.log('Used trenchcoat - ambient damage reduced');
                     break;
                 case 'carrot':
@@ -103,30 +135,29 @@ export class GameManager {
         return null;
     }
     
-
-    
     gameOver() {
         this.gameState = 'gameOver';
-        // Show game over screen
     }
     
     winGame() {
         this.gameState = 'win';
-        // Show win screen and return to menu
         setTimeout(() => {
             this.sceneManager.switchToScene('menu');
         }, 3000);
     }
     
     update(deltaTime) {
-        if (this.gameState === 'playing') {
+        if (this.gameState === 'playing' && !this.isPlayerDead) {
             this.playerData.time += deltaTime;
             
-            // Ambient health reduction
-            this.updatePlayerHealth(-0.1 * deltaTime);
+            // Ambient health reduction (only if player is alive)
+            if (this.currentDifficulty === 'easy') {
+                this.updatePlayerHealth(-0.1 * deltaTime); //-1 every 10 seconds
+            } else if (this.currentDifficulty === 'medium') {
+                this.updatePlayerHealth(-0.12 * deltaTime);//-1 every ~8.3 seconds
+            } else if (this.currentDifficulty === 'hard') {
+                this.updatePlayerHealth(-0.15 * deltaTime);//-1 every ~6.7 seconds
+            }    
         }
     }
-
-
-
 }

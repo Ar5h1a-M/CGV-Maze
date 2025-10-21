@@ -11,6 +11,11 @@ export class HUD {
         this.mazeData = null;
         this.discoveredAreas = new Set();
         this.cellSize = 0;
+
+        // Help system
+        this.helpContainer = null;
+        this.helpContentArea = null;
+        this.isHelpOpen = false;
     }
 
     create() {
@@ -31,10 +36,315 @@ export class HUD {
         this.createTimer();
         this.createMinimap();
         this.createInventory();
+        this.createBlockingIndicator();
+        this.createFlashlightIndicator();
+        this.createHelpButton();
+        this.createHelpSystem();
+        this.createMenuButton();
 
         document.body.appendChild(this.container);
     }
+
+    createHelpButton() {
+        const helpBtn = document.createElement('button');
+        helpBtn.textContent = '?';
+        helpBtn.style.cssText = `
+            position: absolute;
+            top: 20px;
+            right: 180px;
+            width: 40px;
+            height: 40px;
+            background: rgba(139, 0, 0, 0.8);
+            color: white;
+            border: 2px solid #8b0000;
+            border-radius: 50%;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            pointer-events: auto;
+            z-index: 100;
+            transition: all 0.3s;
+        `;
+        helpBtn.onmouseover = () => helpBtn.style.background = 'rgba(169, 0, 0, 0.9)';
+        helpBtn.onmouseout = () => helpBtn.style.background = 'rgba(139, 0, 0, 0.8)';
+        helpBtn.onclick = () => this.toggleHelp();
+        
+        this.container.appendChild(helpBtn);
+    }
+
+    createHelpSystem() {
+        this.helpContainer = document.createElement('div');
+        this.helpContainer.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 600px;
+            height: 400px;
+            background: rgba(10, 10, 10, 0.95);
+            border: 3px solid #8b0000;
+            border-radius: 10px;
+            color: white;
+            font-family: 'Courier New', monospace;
+            display: none;
+            z-index: 1000;
+            pointer-events: auto;
+            overflow: hidden;
+        `;
+
+        // Close button
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '✕';
+        closeBtn.style.cssText = `
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 30px;
+            height: 30px;
+            background: #8b0000;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 16px;
+            z-index: 1001;
+        `;
+        closeBtn.onclick = () => this.toggleHelp();
+        this.helpContainer.appendChild(closeBtn);
+
+        // Tab buttons
+        const tabContainer = document.createElement('div');
+        tabContainer.style.cssText = `
+            display: flex;
+            background: #2a0a0a;
+            border-bottom: 2px solid #8b0000;
+        `;
+
+        const tabs = ['Objective', 'Items & Enemies', 'Controls'];
+        this.tabButtons = [];
+        
+        tabs.forEach((tabName, index) => {
+            const tabBtn = document.createElement('button');
+            tabBtn.textContent = tabName;
+            tabBtn.style.cssText = `
+                flex: 1;
+                padding: 15px;
+                background: #2a0a0a;
+                color: #8b0000;
+                border: none;
+                border-right: 1px solid #8b0000;
+                font-family: 'Courier New', monospace;
+                font-size: 14px;
+                cursor: pointer;
+                transition: all 0.3s;
+            `;
+            tabBtn.onmouseover = () => {
+                if (!tabBtn.classList.contains('active')) {
+                    tabBtn.style.background = '#3a1a1a';
+                }
+            };
+            tabBtn.onmouseout = () => {
+                if (!tabBtn.classList.contains('active')) {
+                    tabBtn.style.background = '#2a0a0a';
+                }
+            };
+            tabBtn.onclick = () => this.switchTab(index);
+            
+            this.tabButtons.push(tabBtn);
+            tabContainer.appendChild(tabBtn);
+        });
+
+        // Content area
+        this.helpContentArea = document.createElement('div');
+        this.helpContentArea.style.cssText = `
+            padding: 20px;
+            height: calc(100% - 50px);
+            overflow-y: auto;
+        `;
+
+        this.helpContainer.appendChild(tabContainer);
+        this.helpContainer.appendChild(this.helpContentArea);
+        this.container.appendChild(this.helpContainer);
+
+        // Load initial tab content
+        this.switchTab(0);
+    }
+
+    switchTab(tabIndex) {
+        if (!this.helpContentArea) return;
+        
+        // Update tab buttons
+        this.tabButtons.forEach((btn, index) => {
+            if (index === tabIndex) {
+                btn.classList.add('active');
+                btn.style.background = '#8b0000';
+                btn.style.color = 'white';
+            } else {
+                btn.classList.remove('active');
+                btn.style.background = '#2a0a0a';
+                btn.style.color = '#8b0000';
+            }
+        });
+
+        // Update content based on tab
+        switch(tabIndex) {
+            case 0: // Objective
+                this.helpContentArea.innerHTML = this.getObjectiveContent();
+                break;
+            case 1: // Items & Enemies
+                this.helpContentArea.innerHTML = this.getItemsEnemiesContent();
+                break;
+            case 2: // Controls
+                this.helpContentArea.innerHTML = this.getControlsContent();
+                break;
+        }
+    }
+
+    getObjectiveContent() {
+        return `
+            <h2 style="color: #8b0000; text-align: center; margin-bottom: 20px;">OBJECTIVE</h2>
+            <div style="line-height: 1.6;">
+                <p><strong>Survive the fog and enemies to reach the exit portal!</strong></p>
+                <br>
+                <p>🏃 Navigate through the dark maze while avoiding:</p>
+                <ul style="margin-left: 20px;">
+                    <li>Deadly traps hidden throughout</li>
+                    <li>Hostile creatures lurking in the shadows</li>
+                    <li>The ever-present fog that limits your vision</li>
+                    <li>Ambient maze damage that slowly drains your health</li>
+                </ul>
+                <br>
+                <p>🎯 Your goal is to find and reach the glowing red exit portal.</p>
+                <p>Use items wisely and manage your stamina to survive!</p>
+            </div>
+        `;
+    }
+
+    getItemsEnemiesContent() {
+        return `
+            <h2 style="color: #8b0000; text-align: center; margin-bottom: 20px;">ITEMS & ENEMIES</h2>
+            <div style="line-height: 1.6;">
+                
+                <h3 style="color: #ff6600; margin-top: 15px;">📦 ITEMS</h3>
+                <ul style="margin-left: 20px;">
+                    <li><strong>Flashlight</strong> – Moderately increases visibility radius</li>
+                    <li><strong>Trench Coat</strong> – Slightly decreases ambient health reduction (does not reduce enemy damage)</li>
+                    <li><strong>Carrots</strong> – Removes fog for 5 seconds and heals 15 HP</li>
+                    <li><strong>Blank Notes</strong> – Lore notes with maze backstory</li>
+                </ul>
+
+                <h3 style="color: #ff0000; margin-top: 20px;">👹 ENEMIES & TRAPS</h3>
+                
+                <h4 style="color: #00ff00;">Easy Difficulty</h4>
+                <ul style="margin-left: 20px;">
+                    <li>Traps: -3 HP, avoidable by jumping</li>
+                    <li>No enemies</li>
+                </ul>
+
+                <h4 style="color: #ffff00;">Medium Difficulty</h4>
+                <ul style="margin-left: 20px;">
+                    <li>Traps: -3 HP, avoidable by jumping</li>
+                    <li>Spiders/Rats: -5 HP damage</li>
+                    <li>Glowing Spider/Rat: Poison (-1 HP/sec for 15s)</li>
+                </ul>
+
+                <h4 style="color: #ff0000;">Hard Difficulty</h4>
+                <ul style="margin-left: 20px;">
+                    <li>Traps: -7 HP, avoidable by jumping</li>
+                    <li>Spiders/Rats: -7 HP damage</li>
+                    <li>Glowing Spider/Rat: Poison (-2 HP/sec for 15s)</li>
+                    <li>Zombies: -20 HP damage</li>
+                    <li>Glowing Human: Poison (-5 HP/sec for 10s)</li>
+                </ul>
+            </div>
+        `;
+    }
+
+    getControlsContent() {
+        return `
+            <h2 style="color: #8b0000; text-align: center; margin-bottom: 20px;">CONTROLS</h2>
+            <div style="line-height: 1.6;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <h4 style="color: #ff6600;">MOVEMENT</h4>
+                        <ul style="list-style: none; padding: 0;">
+                            <li>🠕 W / Arrow Up → Move Forward</li>
+                            <li>🠗 S / Arrow Down → Move Backward</li>
+                            <li>🠔 A / Arrow Left → Move Left</li>
+                            <li>🠖 D / Arrow Right → Move Right</li>
+                            <li>Spacebar → Jump</li>
+                            <li>Shift → Sprint</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 style="color: #ff6600;">ACTIONS</h4>
+                        <ul style="list-style: none; padding: 0;">
+                            <li>B → Block</li>
+                            <li>E → Pick Up / Use Item</li>
+                            <li>V → Change Perspective</li>
+                            <li>1-5 → Select Inventory Slot</li>
+                            <li>F → Toggle Flashlight</li>
+                        </ul>
+                    </div>
+                </div>
+                <br>
+                <p style="text-align: center; color: #888;">
+                    <em>Click anywhere in the game to lock mouse pointer for camera control</em>
+                </p>
+            </div>
+        `;
+    }
+
+    toggleHelp() {
+        this.isHelpOpen = !this.isHelpOpen;
+        this.helpContainer.style.display = this.isHelpOpen ? 'block' : 'none';
+        
+        // Update pointer events on main container
+        this.container.style.pointerEvents = this.isHelpOpen ? 'auto' : 'none';
+        
+        // Re-enable pointer events for interactive elements
+        const interactiveElements = this.container.querySelectorAll('button, canvas');
+        interactiveElements.forEach(el => {
+            if (el !== this.helpContainer && !this.helpContainer.contains(el)) {
+                el.style.pointerEvents = this.isHelpOpen ? 'none' : 'auto';
+            }
+        });
+    }
+
+    createMenuButton() {
+        const menuBtn = document.createElement('button');
+        menuBtn.textContent = 'MENU';
+        menuBtn.style.cssText = `
+            position: absolute;
+            top: 20px;
+            right: 230px;
+            width: 80px;
+            height: 40px;
+            background: rgba(139, 0, 0, 0.8);
+            color: white;
+            border: 2px solid #8b0000;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            cursor: pointer;
+            pointer-events: auto;
+            z-index: 100;
+            transition: all 0.3s;
+        `;
+        menuBtn.onmouseover = () => menuBtn.style.background = 'rgba(169, 0, 0, 0.9)';
+        menuBtn.onmouseout = () => menuBtn.style.background = 'rgba(139, 0, 0, 0.8)';
+        menuBtn.onclick = () => this.returnToMenu();
+        
+        this.container.appendChild(menuBtn);
+    }
+
+    returnToMenu() {
+        if (this.gameManager && this.gameManager.sceneManager) {
+            this.gameManager.sceneManager.switchToScene('menu');
+        }
+    }
     
+    // ... REST OF YOUR EXISTING METHODS REMAIN EXACTLY THE SAME ...
     createHealthBar() {
         const healthContainer = document.createElement('div');
         healthContainer.style.cssText = `
@@ -56,7 +366,6 @@ export class HUD {
             width: 100%;
             transition: width 0.3s;
         `;
-        
         
         this.healthText = document.createElement('div');
         this.healthText.style.cssText = `
@@ -220,137 +529,6 @@ export class HUD {
         this.container.appendChild(inventory);
     }
 
-    // -------------------------
-    // Mini-map methods
-    // -------------------------
-    setMazeData(mazeData) {
-        this.mazeData = {
-            grid: mazeData.grid,
-            width: mazeData.size,
-            height: mazeData.size,
-            start: { x: mazeData.start.x, y: mazeData.start.z },
-            end: { x: mazeData.end.x, y: mazeData.end.z }
-        };
-        this.calculateCellSize();
-    }
-
-    calculateCellSize() {
-        if (!this.mazeData) return;
-        const maxDimension = Math.max(this.mazeData.width, this.mazeData.height);
-        this.cellSize = 130 / maxDimension;
-    }
-
-    updateDiscoveredAreas(areas) {
-        if (!areas) return;
-        this.discoveredAreas = new Set(areas.map(area => `${area.x},${area.y}`));
-    }
-
-    updateMinimap(playerPosition, playerRotation) {
-        if (!this.mazeData || !this.minimapCtx) return;
-
-        const ctx = this.minimapCtx;
-        const centerX = 75;
-        const centerY = 75;
-        
-        // Clear canvas
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        ctx.fillRect(0, 0, 150, 150);
-        
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, 73, 0, Math.PI * 2);
-        ctx.clip();
-        
-        // Convert world position to grid position
-        const playerGridX = Math.floor(playerPosition.x + this.mazeData.width / 2);
-        const playerGridY = Math.floor(playerPosition.z + this.mazeData.height / 2);
-        
-        // Draw maze
-        for (let y = 0; y < this.mazeData.height; y++) {
-            for (let x = 0; x < this.mazeData.width; x++) {
-                if (!this.isDiscovered(x, y)) continue;
-                
-                const relX = x - playerGridX;
-                const relY = y - playerGridY;
-                
-                const cos = Math.cos(-playerRotation.y);
-                const sin = Math.sin(-playerRotation.y);
-                const rotatedX = relX * cos - relY * sin;
-                const rotatedY = relX * sin + relY * cos;
-                
-                const drawX = centerX + rotatedX * this.cellSize;
-                const drawY = centerY + rotatedY * this.cellSize;
-                
-                if (this.isInMinimapBounds(drawX, drawY)) {
-                    if (this.mazeData.grid[y][x] === 1) {
-                        ctx.fillStyle = 'rgba(139, 0, 0, 0.8)'; // Wall
-                        ctx.fillRect(drawX - this.cellSize/2, drawY - this.cellSize/2, this.cellSize, this.cellSize);
-                    } else if (x === this.mazeData.end.x && y === this.mazeData.end.y) {
-                        ctx.fillStyle = 'rgba(0, 255, 0, 0.8)'; // Exit
-                        ctx.fillRect(drawX - this.cellSize/2, drawY - this.cellSize/2, this.cellSize, this.cellSize);
-                    } else {
-                        ctx.fillStyle = 'rgba(100, 100, 100, 0.5)'; // Path
-                        ctx.fillRect(drawX - this.cellSize/2, drawY - this.cellSize/2, this.cellSize, this.cellSize);
-                    }
-                }
-            }
-        }
-        
-        // Player dot
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, 3, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Direction arrow
-        const dirLen = 8;
-        const endX = centerX + Math.sin(playerRotation.y) * dirLen;
-        const endY = centerY - Math.cos(playerRotation.y) * dirLen;
-        ctx.strokeStyle = '#ffff00';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(centerX, centerY);
-        ctx.lineTo(endX, endY);
-        ctx.stroke();
-        
-        ctx.restore();
-        this.drawCompass(playerRotation);
-    }
-
-    drawCompass(playerRotation) {
-        const ctx = this.minimapCtx;
-        const centerX = 75;
-        const topY = 25;
-        
-        ctx.save();
-        ctx.translate(centerX, topY);
-        ctx.rotate(playerRotation.y);
-        
-        ctx.fillStyle = '#8b0000';
-        ctx.font = 'bold 10px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('N', 0, 0);
-        
-        ctx.restore();
-    }
-
-    isDiscovered(x, y) {
-        if (this.discoveredAreas.size === 0) return true; // Debug: show all
-        return this.discoveredAreas.has(`${x},${y}`);
-    }
-
-    isInMinimapBounds(x, y) {
-        const centerX = 75;
-        const centerY = 75;
-        const radius = 73;
-        const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
-        return distance <= radius;
-    }
-
-    // -------------------------
-    // HUD update loop
-    // -------------------------
     createBlockingIndicator() {
         const blockingIndicator = document.createElement('div');
         blockingIndicator.style.cssText = `
@@ -389,12 +567,10 @@ export class HUD {
     }
 
     update() {
-        
         if (this.healthBar) {
             const percent = (this.gameManager.playerData.health / this.gameManager.playerData.maxHealth) * 100;
             this.healthBar.style.width = `${percent}%`;
 
-            
             if (this.healthText) {
                 const hp = Math.max(0, Math.round(this.gameManager.playerData.health));
                 const maxHp = Math.round(this.gameManager.playerData.maxHealth);
@@ -402,13 +578,11 @@ export class HUD {
             }
         }
         
-        // Stamina
         if (this.staminaBar) {
             const percent = (this.gameManager.playerData.stamina / this.gameManager.playerData.maxStamina) * 100;
             this.staminaBar.style.width = `${percent}%`;
         }
         
-        // Timer
         const timer = document.getElementById('game-timer');
         if (timer) {
             const time = this.gameManager.playerData.time;
@@ -417,30 +591,145 @@ export class HUD {
             timer.textContent = `${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')}`;
         }
         
-        // Minimap
         if (this.gameManager.playerData && this.mazeData) {
             const playerPosition = this.gameManager.playerData.position || { x: 0, y: 0, z: 0 };
             const playerRotation = this.gameManager.playerData.rotation || { y: 0 };
             this.updateMinimap(playerPosition, playerRotation);
         }
         
-        // Inventory
         this.updateInventory();
 
-        // Update blocking indicator
         const blockingIndicator = document.getElementById('blocking-indicator');
         if (blockingIndicator) {
             const isBlocking = this.gameManager.playerData.isBlocking || false;
             blockingIndicator.style.display = isBlocking ? 'block' : 'none';
         }
         
-        // Flashlight indicator
         const flashlightIndicator = document.getElementById('flashlight-indicator');
-        if (!flashlightIndicator) {
-            this.createFlashlightIndicator();
-        } else {
+        if (flashlightIndicator) {
             flashlightIndicator.textContent = this.gameManager.flashlightActive ? '🔦 ON' : '🔦 OFF';
         }
+    }
+
+    // ... rest of your existing methods (setMazeData, calculateCellSize, updateMinimap, etc.) ...
+    setMazeData(mazeData) {
+        this.mazeData = {
+            grid: mazeData.grid,
+            width: mazeData.size,
+            height: mazeData.size,
+            start: { x: mazeData.start.x, y: mazeData.start.z },
+            end: { x: mazeData.end.x, y: mazeData.end.z }
+        };
+        this.calculateCellSize();
+    }
+
+    calculateCellSize() {
+        if (!this.mazeData) return;
+        const maxDimension = Math.max(this.mazeData.width, this.mazeData.height);
+        this.cellSize = 130 / maxDimension;
+    }
+
+    updateDiscoveredAreas(areas) {
+        if (!areas) return;
+        this.discoveredAreas = new Set(areas.map(area => `${area.x},${area.y}`));
+    }
+
+    updateMinimap(playerPosition, playerRotation) {
+        if (!this.mazeData || !this.minimapCtx) return;
+
+        const ctx = this.minimapCtx;
+        const centerX = 75;
+        const centerY = 75;
+        
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.fillRect(0, 0, 150, 150);
+        
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 73, 0, Math.PI * 2);
+        ctx.clip();
+        
+        const playerGridX = Math.floor(playerPosition.x + this.mazeData.width / 2);
+        const playerGridY = Math.floor(playerPosition.z + this.mazeData.height / 2);
+        
+        for (let y = 0; y < this.mazeData.height; y++) {
+            for (let x = 0; x < this.mazeData.width; x++) {
+                if (!this.isDiscovered(x, y)) continue;
+                
+                const relX = x - playerGridX;
+                const relY = y - playerGridY;
+                
+                const cos = Math.cos(-playerRotation.y);
+                const sin = Math.sin(-playerRotation.y);
+                const rotatedX = relX * cos - relY * sin;
+                const rotatedY = relX * sin + relY * cos;
+                
+                const drawX = centerX + rotatedX * this.cellSize;
+                const drawY = centerY + rotatedY * this.cellSize;
+                
+                if (this.isInMinimapBounds(drawX, drawY)) {
+                    if (this.mazeData.grid[y][x] === 1) {
+                        ctx.fillStyle = 'rgba(139, 0, 0, 0.8)';
+                        ctx.fillRect(drawX - this.cellSize/2, drawY - this.cellSize/2, this.cellSize, this.cellSize);
+                    } else if (x === this.mazeData.end.x && y === this.mazeData.end.y) {
+                        ctx.fillStyle = 'rgba(0, 255, 0, 0.8)';
+                        ctx.fillRect(drawX - this.cellSize/2, drawY - this.cellSize/2, this.cellSize, this.cellSize);
+                    } else {
+                        ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
+                        ctx.fillRect(drawX - this.cellSize/2, drawY - this.cellSize/2, this.cellSize, this.cellSize);
+                    }
+                }
+            }
+        }
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        const dirLen = 8;
+        const endX = centerX + Math.sin(playerRotation.y) * dirLen;
+        const endY = centerY - Math.cos(playerRotation.y) * dirLen;
+        ctx.strokeStyle = '#ffff00';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+        
+        ctx.restore();
+        this.drawCompass(playerRotation);
+    }
+
+    drawCompass(playerRotation) {
+        const ctx = this.minimapCtx;
+        const centerX = 75;
+        const topY = 25;
+        
+        ctx.save();
+        ctx.translate(centerX, topY);
+        ctx.rotate(playerRotation.y);
+        
+        ctx.fillStyle = '#8b0000';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('N', 0, 0);
+        
+        ctx.restore();
+    }
+
+    isDiscovered(x, y) {
+        if (this.discoveredAreas.size === 0) return true;
+        return this.discoveredAreas.has(`${x},${y}`);
+    }
+
+    isInMinimapBounds(x, y) {
+        const centerX = 75;
+        const centerY = 75;
+        const radius = 73;
+        const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+        return distance <= radius;
     }
     
     updateInventory() {
