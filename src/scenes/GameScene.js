@@ -6,6 +6,9 @@ import { MazeRenderer } from '../maze/MazeRenderer.js';
 import { HUD } from '../ui/HUD.js';
 import { FogOfWar } from '../utils/FogOfWar.js';
 
+// 🔊 Add your ambience file here (e.g. src/audio/ambience_spooky.mp3)
+import AMBIENCE_URL from '../audio/ambience_spooky.mp3';
+
 export class GameScene {
     constructor() {
         this.scene = null;
@@ -28,11 +31,21 @@ export class GameScene {
         this.hasWon = false;
         this.skybox = null;
 
-        // --- ADD: remember baseline fog so we can expand it with flashlight ---
+        // --- remember baseline fog so we can expand it with flashlight ---
         this._baseFog = { near: 1, far: 5 };
         // holders for flashlight lights
         this.flashlight = null;
         this.flashFill = null;
+
+        // 🔊 audio internals
+        this._audioListener = null;
+        this._audioLoader = null;
+        this._ambience = null;
+        this._ambienceArmed = false;
+
+        // 📝 note-reading UI state
+        this.currentNoteTarget = null;
+        this.noteUI = { overlay: null, text: null, prompt: null, isOpen: false };
     }
     
     async init(gameManager, uiManager, renderer = null) {
@@ -40,7 +53,7 @@ export class GameScene {
         this.uiManager = uiManager;
         this.renderer = renderer;
 
-        // --- ADD: initialize flashlight flags ---
+        // --- initialize flashlight flags ---
         this.gameManager.flashlightActive = false;
         this.gameManager.hasFlashlight = false;
 
@@ -61,6 +74,9 @@ export class GameScene {
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         this.camera.position.set(0, 1.2, 0);
         this.scene.camera = this.camera;
+
+        // 🔊 start ambience after first user gesture
+        this._setupAmbienceAudio();
         
         // Setup physics world
         this.setupPhysics();
@@ -98,6 +114,48 @@ export class GameScene {
         // Start clock
         this.clock.start();
         console.log('GameScene initialized with enemies and items');
+
+        // 📝 Build note overlay UI + bind inputs
+        this._buildNoteUI();
+        this._bindNoteInput();
+    }
+
+    // 🔊 minimal audio helper
+    _setupAmbienceAudio() {
+        try {
+            this._audioListener = new THREE.AudioListener();
+            this.camera.add(this._audioListener);
+
+            this._audioLoader = new THREE.AudioLoader();
+            this._ambience = new THREE.Audio(this._audioListener);
+
+            const start = () => {
+                if (this._ambienceArmed) return;
+                this._ambienceArmed = true;
+
+                this._audioLoader.load(
+                    AMBIENCE_URL,
+                    (buffer) => {
+                        this._ambience.setBuffer(buffer);
+                        this._ambience.setLoop(true);
+                        this._ambience.setVolume(0.35); // adjust if needed
+                        this._ambience.play();
+                        console.log('🔊 Ambience playing');
+                    },
+                    undefined,
+                    (err) => console.warn('Ambience load error:', err)
+                );
+
+                window.removeEventListener('pointerdown', start);
+                window.removeEventListener('keydown', start);
+            };
+
+            // required by browser autoplay policy
+            window.addEventListener('pointerdown', start, { once: true });
+            window.addEventListener('keydown', start, { once: true });
+        } catch (e) {
+            console.warn('Audio setup failed:', e);
+        }
     }
 
     async setupSkybox() {
@@ -151,7 +209,7 @@ export class GameScene {
         this.scene.add(cameraStartMarker);
     }
 
-       async createEveningSkybox() {
+    async createEveningSkybox() {
         // Evening skybox - semi-dark with visible sun
         const skyboxGeometry = new THREE.BoxGeometry(1000, 1000, 1000);
         
@@ -271,7 +329,7 @@ export class GameScene {
         console.log('🌌 Dark skybox with abundant stars loaded for Hard difficulty');
     }
 
-        createSun() {
+    createSun() {
         // Create a visible sun in the sky - position it within view
         const sunGeometry = new THREE.SphereGeometry(25, 32, 32); // Larger size
         const sunMaterial = new THREE.MeshBasicMaterial({
@@ -398,6 +456,7 @@ export class GameScene {
 
         console.log(`✨ Created ${starCount} stars with enhanced visibility`);
     }
+
     populateGameWorld(mazeData) {
         this.spawnEnemies(mazeData);
         this.spawnItems(mazeData);
@@ -468,23 +527,38 @@ export class GameScene {
         this.world.createCollider(portalCollider, portalBody);
     }
 
+    // 📝 Interact-to-read notes; other items keep original behavior
     checkItemCollection() {
         if (!this.player || !this.player.mesh) return;
+
+        // Reset prompt each frame; it will re-appear when near a note
+        this.currentNoteTarget = null;
+        if (this.noteUI.prompt) this.noteUI.prompt.style.display = 'none';
+
         this.items = this.items.filter(item => {
-            if (item.isNearPlayer(this.player.mesh.position) && !item.isCollected) {
+            if (!item || item.isCollected) return false;
+
+            const near = item.isNearPlayer(this.player.mesh.position);
+
+            // Handle notes interactively
+            if (item.type === 'note') {
+                if (near) {
+                    this.currentNoteTarget = item;
+                    if (this.noteUI.prompt) this.noteUI.prompt.style.display = 'block';
+                }
+                return true; // keep note in world until read
+            }
+
+            // Original behavior for everything else
+            if (near) {
                 const collectedItem = item.collect();
                 if (collectedItem && this.gameManager.addToInventory(collectedItem)) {
-                    console.log(`🎒 Added ${collectedItem.type} to inventory`);
-
-                    // --- ADD: mark flashlight ownership so Player can toggle with F ---
+                    // mark flashlight ownership so Player can toggle with F
                     if (collectedItem.type === 'flashlight') {
                         this.player.hasFlashlight = true;
                         this.gameManager.hasFlashlight = true;
-                        // If you want it on as soon as you pick it up, uncomment:
-                        // this.gameManager.flashlightActive = true;
                     }
-
-                    return false;
+                    return false; // remove from world
                 }
             }
             return true;
@@ -637,7 +711,7 @@ export class GameScene {
             this.checkPortalWin();
         }
 
-        // --- ADD: sync light visibility + relax fog while flashlight is ON ---
+        // --- sync light visibility + relax fog while flashlight is ON ---
         const lit = !!(this.gameManager && this.gameManager.flashlightActive);
         if (this.flashlight) this.flashlight.visible = lit;
         if (this.flashFill) this.flashFill.visible = lit;
@@ -665,6 +739,136 @@ export class GameScene {
     cleanup() {
         if (this.hud) this.hud.cleanup();
         if (this.fogOfWar) this.fogOfWar.clear();
+        // clean up note UI
+        if (this.noteUI.overlay) document.body.removeChild(this.noteUI.overlay);
+        if (this.noteUI.prompt) document.body.removeChild(this.noteUI.prompt);
+    }
+
+    // =========================
+    // 📝 Note UI helpers
+    // =========================
+    _buildNoteUI() {
+        // Overlay
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.inset = '0';
+        overlay.style.background = 'rgba(0,0,0,0.9)';
+        overlay.style.color = '#e5e5e5';
+        overlay.style.display = 'none';
+        overlay.style.zIndex = '9999';
+        overlay.style.padding = '4rem 2rem';
+        overlay.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+        overlay.style.lineHeight = '1.6';
+        overlay.style.backdropFilter = 'blur(2px)';
+        overlay.style.overflow = 'auto';
+
+        // Content container
+        const panel = document.createElement('div');
+        panel.style.maxWidth = '800px';
+        panel.style.margin = '0 auto';
+        panel.style.border = '1px solid #333';
+        panel.style.borderRadius = '12px';
+        panel.style.padding = '2rem';
+        panel.style.background = 'rgba(20,20,20,0.85)';
+        panel.style.boxShadow = '0 10px 30px rgba(0,0,0,0.6)';
+
+        // Title
+        const h = document.createElement('h2');
+        h.textContent = 'Found Note';
+        h.style.margin = '0 0 1rem 0';
+        h.style.fontWeight = '700';
+
+        // Text
+        const text = document.createElement('div');
+        text.style.whiteSpace = 'pre-wrap';
+        text.style.fontSize = '1.05rem';
+
+        // Close
+        const close = document.createElement('button');
+        close.textContent = 'Close (Esc)';
+        close.style.marginTop = '1.5rem';
+        close.style.padding = '0.6rem 1rem';
+        close.style.borderRadius = '8px';
+        close.style.border = '1px solid #444';
+        close.style.background = '#1e1e1e';
+        close.style.color = '#ddd';
+        close.style.cursor = 'pointer';
+        close.addEventListener('click', () => this._closeNote());
+
+        panel.appendChild(h);
+        panel.appendChild(text);
+        panel.appendChild(close);
+        overlay.appendChild(panel);
+        document.body.appendChild(overlay);
+
+        // Prompt (bottom-center)
+        const prompt = document.createElement('div');
+        prompt.textContent = 'Press E to read';
+        prompt.style.position = 'fixed';
+        prompt.style.left = '50%';
+        prompt.style.transform = 'translateX(-50%)';
+        prompt.style.bottom = '48px';
+        prompt.style.padding = '8px 12px';
+        prompt.style.background = 'rgba(0,0,0,0.6)';
+        prompt.style.color = '#ddd';
+        prompt.style.border = '1px solid #444';
+        prompt.style.borderRadius = '8px';
+        prompt.style.fontSize = '14px';
+        prompt.style.zIndex = '9998';
+        prompt.style.display = 'none';
+        document.body.appendChild(prompt);
+
+        this.noteUI.overlay = overlay;
+        this.noteUI.text = text;
+        this.noteUI.prompt = prompt;
+        this.noteUI.isOpen = false;
+    }
+
+    _bindNoteInput() {
+        // Interact (E)
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'e' || e.key === 'E') {
+                if (this.currentNoteTarget && !this.noteUI.isOpen) {
+                    // Try to grab text from the note item if it has one
+                    const t =
+                        this.currentNoteTarget.text ||
+                        (this.currentNoteTarget.userData && this.currentNoteTarget.userData.text) ||
+                        (this.currentNoteTarget.noteText) ||
+                        'The ink is smeared, but one line remains: "The maze was never underground at all."';
+
+                    // Collect it (so your inventory still gets the note)
+                    const collected = this.currentNoteTarget.collect
+                        ? this.currentNoteTarget.collect()
+                        : { type: 'note', text: t };
+
+                    if (collected && this.gameManager.addToInventory(collected)) {
+                        this.currentNoteTarget.isCollected = true; // remove next tick
+                    }
+
+                    this._openNote(t);
+                }
+            }
+            // Close (Esc)
+            if (e.key === 'Escape') {
+                if (this.noteUI.isOpen) this._closeNote();
+            }
+        });
+    }
+
+    _openNote(text) {
+        if (!this.noteUI.overlay) return;
+        this.noteUI.text.textContent = text || '';
+        this.noteUI.overlay.style.display = 'block';
+        this.noteUI.isOpen = true;
+
+        // Hide prompt while open
+        if (this.noteUI.prompt) this.noteUI.prompt.style.display = 'none';
+    }
+
+    _closeNote() {
+        if (!this.noteUI.overlay) return;
+        this.noteUI.overlay.style.display = 'none';
+        this.noteUI.isOpen = false;
     }
 }
 
