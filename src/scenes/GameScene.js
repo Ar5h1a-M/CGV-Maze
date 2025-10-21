@@ -26,6 +26,7 @@ export class GameScene {
         this.traps = [];
         this.portal = null;
         this.hasWon = false;
+        this.skybox = null;
 
         // --- ADD: remember baseline fog so we can expand it with flashlight ---
         this._baseFog = { near: 1, far: 5 };
@@ -54,6 +55,7 @@ export class GameScene {
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x0a0a0a);
         this.scene.fog = new THREE.Fog(0x0a0a0a, this._baseFog.near, this._baseFog.far);
+        await this.setupSkybox();
         
         // Create camera
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -98,6 +100,304 @@ export class GameScene {
         console.log('GameScene initialized with enemies and items');
     }
 
+    async setupSkybox() {
+        // Remove existing skybox if any
+        if (this.skybox) {
+            this.scene.remove(this.skybox);
+        }
+
+        // Remove any existing celestial bodies
+        this.scene.children = this.scene.children.filter(child => 
+            !child.isPoints && // Remove stars
+            !(child.isMesh && (child.material?.emissive || child.material?.emissiveIntensity > 0)) // Remove sun/moon
+        );
+
+        const difficulty = this.gameManager.currentDifficulty;
+        
+        switch(difficulty) {
+            case 'easy':
+                await this.createEveningSkybox();
+                break;
+            case 'medium':
+                await this.createNightSkybox();
+                break;
+            case 'hard':
+                await this.createDarkSkybox();
+                break;
+            default:
+                await this.createEveningSkybox();
+        }
+
+        // Debug: Log camera position to help with positioning
+        if (this.camera) {
+            console.log('📷 Camera position:', this.camera.position);
+            console.log('📷 Camera rotation:', this.camera.rotation);
+        }
+    }
+
+    // Add a debug method to help visualize positions (optional)
+    addDebugMarkers() {
+        // Add a marker at world center
+        const centerGeometry = new THREE.SphereGeometry(5, 16, 16);
+        const centerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const centerMarker = new THREE.Mesh(centerGeometry, centerMaterial);
+        this.scene.add(centerMarker);
+
+        // Add marker at camera start position
+        const cameraStartGeometry = new THREE.SphereGeometry(3, 16, 16);
+        const cameraStartMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const cameraStartMarker = new THREE.Mesh(cameraStartGeometry, cameraStartMaterial);
+        cameraStartMarker.position.set(0, 1.2, 0); // Camera start position
+        this.scene.add(cameraStartMarker);
+    }
+
+       async createEveningSkybox() {
+        // Evening skybox - semi-dark with visible sun
+        const skyboxGeometry = new THREE.BoxGeometry(1000, 1000, 1000);
+        
+        // Create evening colors (deep orange/purple gradient)
+        const eveningColors = [
+            new THREE.Color(0x4a235a), // Top - deep purple
+            new THREE.Color(0x4a235a), // Bottom - deep purple  
+            new THREE.Color(0xe67e22), // Front - orange
+            new THREE.Color(0xe67e22), // Back - orange
+            new THREE.Color(0x8e44ad), // Right - purple
+            new THREE.Color(0x8e44ad)  // Left - purple
+        ];
+
+        const materials = eveningColors.map(color => 
+            new THREE.MeshBasicMaterial({ 
+                color: color,
+                side: THREE.BackSide
+            })
+        );
+
+        this.skybox = new THREE.Mesh(skyboxGeometry, materials);
+        this.scene.add(this.skybox);
+
+        // Add visible sun
+        this.createSun();
+
+        // Add directional light for sun effect
+        const sunLight = new THREE.DirectionalLight(0xffa500, 0.8);
+        sunLight.position.set(50, 50, -50);
+        this.scene.add(sunLight);
+
+        // Add ambient light for evening
+        const eveningAmbient = new THREE.AmbientLight(0x333366, 0.4);
+        this.scene.add(eveningAmbient);
+
+        console.log('🌅 Evening skybox with visible sun loaded for Easy difficulty');
+    }
+
+    async createNightSkybox() {
+        // Night skybox with visible moon and stars
+        const skyboxGeometry = new THREE.BoxGeometry(1000, 1000, 1000);
+        
+        // Create night colors (deep blue/black)
+        const nightColors = [
+            new THREE.Color(0x0a0a2a), // Top - very dark blue
+            new THREE.Color(0x1a1a3a), // Bottom - slightly lighter
+            new THREE.Color(0x1a1a3a), // Front
+            new THREE.Color(0x1a1a3a), // Back
+            new THREE.Color(0x1a1a3a), // Right
+            new THREE.Color(0x1a1a3a)  // Left
+        ];
+
+        const materials = nightColors.map(color => 
+            new THREE.MeshBasicMaterial({ 
+                color: color,
+                side: THREE.BackSide
+            })
+        );
+
+        this.skybox = new THREE.Mesh(skyboxGeometry, materials);
+        this.scene.add(this.skybox);
+
+        // Add visible moon
+        this.createMoon();
+        
+        // Add stars
+        this.createStars(500); // More stars for medium difficulty
+
+        // Add directional light for moon effect
+        const moonLight = new THREE.DirectionalLight(0xaaaaff, 0.5);
+        moonLight.position.set(-30, 40, 30);
+        this.scene.add(moonLight);
+
+        // Add ambient light for night
+        const nightAmbient = new THREE.AmbientLight(0x222244, 0.3);
+        this.scene.add(nightAmbient);
+
+        console.log('🌙 Night skybox with moon and stars loaded for Medium difficulty');
+    }
+
+    async createDarkSkybox() {
+        // Very dark skybox - minimal light with lots of stars
+        const skyboxGeometry = new THREE.BoxGeometry(1000, 1000, 1000);
+        
+        // Create very dark colors (almost black)
+        const darkColors = [
+            new THREE.Color(0x050510), // Top - near black
+            new THREE.Color(0x080818), // Bottom
+            new THREE.Color(0x080818), // Front
+            new THREE.Color(0x080818), // Back
+            new THREE.Color(0x080818), // Right
+            new THREE.Color(0x080818)  // Left
+        ];
+
+        const materials = darkColors.map(color => 
+            new THREE.MeshBasicMaterial({ 
+                color: color,
+                side: THREE.BackSide
+            })
+        );
+
+        this.skybox = new THREE.Mesh(skyboxGeometry, materials);
+        this.scene.add(this.skybox);
+
+        // Add lots of stars for hard difficulty
+        this.createStars(1500); // Many more stars for hard mode
+
+        // Very minimal directional light (barely any)
+        const starLight = new THREE.DirectionalLight(0x444466, 0.15);
+        starLight.position.set(0, 50, 0);
+        this.scene.add(starLight);
+
+        // Very low ambient light
+        const darkAmbient = new THREE.AmbientLight(0x111122, 0.08);
+        this.scene.add(darkAmbient);
+
+        console.log('🌌 Dark skybox with abundant stars loaded for Hard difficulty');
+    }
+
+        createSun() {
+        // Create a visible sun in the sky - position it within view
+        const sunGeometry = new THREE.SphereGeometry(25, 32, 32); // Larger size
+        const sunMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff4500,
+            emissive: 0xff4500,
+            emissiveIntensity: 1.0, // Increased intensity
+            fog: false // Important: disable fog for celestial bodies
+        });
+        
+        const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+        // Position in the upper part of the sky, visible from spawn
+        sun.position.set(150, 100, 150); 
+        this.scene.add(sun);
+        
+        // Add sun glow effect
+        const sunGlowGeometry = new THREE.SphereGeometry(35, 32, 32);
+        const sunGlowMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffa500,
+            transparent: true,
+            opacity: 0.4,
+            side: THREE.BackSide,
+            fog: false
+        });
+        
+        const sunGlow = new THREE.Mesh(sunGlowGeometry, sunGlowMaterial);
+        sun.add(sunGlow);
+        
+        console.log('☀️ Sun created at position:', sun.position);
+    }
+
+    createMoon() {
+        // Create a visible moon in the sky
+        const moonGeometry = new THREE.SphereGeometry(20, 32, 32); // Larger size
+        const moonMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            emissive: 0x888888,
+            emissiveIntensity: 0.6, // Increased intensity
+            fog: false // Important: disable fog
+        });
+        
+        const moon = new THREE.Mesh(moonGeometry, moonMaterial);
+        // Position in the upper part of the sky, opposite to sun
+        moon.position.set(-150, 100, 150);
+        this.scene.add(moon);
+        
+        // Add moon glow effect
+        const moonGlowGeometry = new THREE.SphereGeometry(28, 32, 32);
+        const moonGlowMaterial = new THREE.MeshBasicMaterial({
+            color: 0xaaaaff,
+            transparent: true,
+            opacity: 0.3,
+            side: THREE.BackSide,
+            fog: false
+        });
+        
+        const moonGlow = new THREE.Mesh(moonGlowGeometry, moonGlowMaterial);
+        moon.add(moonGlow);
+        
+        console.log('🌙 Moon created at position:', moon.position);
+    }
+
+    createStars(starCount) {
+        const starsGeometry = new THREE.BufferGeometry();
+        const starsMaterial = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 2.0, // Larger size
+            sizeAttenuation: false, // Stars don't get smaller with distance
+            transparent: true,
+            fog: false, // Important: disable fog for stars
+            blending: THREE.AdditiveBlending // Makes stars brighter against dark backgrounds
+        });
+
+        const positions = new Float32Array(starCount * 3);
+        const sizes = new Float32Array(starCount);
+        const colors = new Float32Array(starCount * 3);
+
+        for (let i = 0; i < starCount; i++) {
+            // Position stars on the inner surface of the skybox
+            const radius = 480; // Just inside the skybox
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos((Math.random() * 2) - 1);
+
+            const x = radius * Math.sin(phi) * Math.cos(theta);
+            const y = radius * Math.sin(phi) * Math.sin(theta);
+            const z = radius * Math.cos(phi);
+
+            positions[i * 3] = x;
+            positions[i * 3 + 1] = y;
+            positions[i * 3 + 2] = z;
+
+            // Random sizes - make some stars brighter/larger
+            sizes[i] = 1.0 + Math.random() * 3.0;
+
+            // Random colors with more variation
+            const starColor = new THREE.Color();
+            const colorChoice = Math.random();
+            if (colorChoice < 0.6) {
+                starColor.set(0xffffff); // White stars
+            } else if (colorChoice < 0.8) {
+                starColor.set(0xaaaaff); // Blue stars
+            } else if (colorChoice < 0.9) {
+                starColor.set(0xffffaa); // Yellow stars
+            } else {
+                starColor.set(0xffaaaa); // Red stars
+            }
+
+            // Add some brightness variation
+            const brightness = 0.7 + Math.random() * 0.3;
+            starColor.multiplyScalar(brightness);
+
+            colors[i * 3] = starColor.r;
+            colors[i * 3 + 1] = starColor.g;
+            colors[i * 3 + 2] = starColor.b;
+        }
+
+        starsGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        starsGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        starsGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        
+        starsMaterial.vertexColors = true;
+
+        const stars = new THREE.Points(starsGeometry, starsMaterial);
+        this.scene.add(stars);
+
+        console.log(`✨ Created ${starCount} stars with enhanced visibility`);
+    }
     populateGameWorld(mazeData) {
         this.spawnEnemies(mazeData);
         this.spawnItems(mazeData);
