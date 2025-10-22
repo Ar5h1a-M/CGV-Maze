@@ -11,35 +11,93 @@ export class MazeRenderer {
         this.loadTextures(); // Custom horror textures loaded here
     }
 
-    loadTextures() {
+    
+loadTextures() {
         // 👇 EDIT THESE FILENAMES ONLY to swap textures
         const wallTexture = this.textureLoader.load('/textures/wall_horror.jpg');
         const groundTexture = this.textureLoader.load('/textures/ground_horror.jpg');
-        const wallNormal = this.textureLoader.load('/textures/wall_normal.png'); // optional
+        
+        // Load bump/normal maps with error handling
+        const wallBump = this.textureLoader.load(
+            '/textures/wall_bump2.jpg',
+            (texture) => console.log('✅ Wall bump map loaded'),
+            undefined,
+            (err) => console.warn('⚠️ Wall bump map failed to load:', err)
+        );
+        
+        const groundBump = this.textureLoader.load(
+            '/textures/ground_bump2.jpg',
+            (texture) => console.log('✅ Ground bump map loaded'),
+            undefined,
+            (err) => console.warn('⚠️ Ground bump map failed to load:', err)
+        );
 
+        // Configure base textures
         wallTexture.wrapS = wallTexture.wrapT = THREE.RepeatWrapping;
         wallTexture.repeat.set(1, 2);
 
         groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
         groundTexture.repeat.set(8, 8);
 
-        // Shared materials (efficient!)
+        // Configure bump maps with same wrapping
+        wallBump.wrapS = wallBump.wrapT = THREE.RepeatWrapping;
+        wallBump.repeat.set(1, 2);
+
+        groundBump.wrapS = groundBump.wrapT = THREE.RepeatWrapping;
+        groundBump.repeat.set(8, 8);
+
+        // Shared materials with enhanced bump settings
         this.materials = {
             wall: new THREE.MeshStandardMaterial({
                 map: wallTexture,
-                normalMap: wallNormal,   // adds bumps if you provide a normal map
+                bumpMap: wallBump,
+                bumpScale: 4.0,          // Increased for more visible effect
+                displacementMap: null,    // Ensure no displacement conflict
                 roughness: 0.95,
                 metalness: 0.05
             }),
             ground: new THREE.MeshStandardMaterial({
                 map: groundTexture,
+                bumpMap: groundBump,
+                bumpScale: 3.0,          // Increased for more visible effect
+                displacementMap: null,
                 roughness: 1.0,
                 metalness: 0.0
             })
         };
 
-        console.log('Horror textures loaded ✅');
+        console.log('🎨 Materials created with bump maps (scale: wall=1.5, ground=1.0)');
     }
+
+    // loadTextures() {
+    //     // 👇 EDIT THESE FILENAMES ONLY to swap textures
+    //     const wallTexture = this.textureLoader.load('/textures/wall_horror.jpg');
+    //     const groundTexture = this.textureLoader.load('/textures/ground_horror.jpg');
+    //     const wallNormal = this.textureLoader.load('/textures/wall_normal.png'); // optional
+
+    //     wallTexture.wrapS = wallTexture.wrapT = THREE.RepeatWrapping;
+    //     wallTexture.repeat.set(1, 2);
+
+    //     groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
+    //     groundTexture.repeat.set(8, 8);
+
+    //     // Shared materials (efficient!)
+    //     this.materials = {
+    //         wall: new THREE.MeshStandardMaterial({
+    //             map: wallTexture,
+    //             normalMap: wallNormal,   // adds bumps if you provide a normal map
+    //             roughness: 0.95,
+    //             metalness: 0.05
+    //         }),
+    //         ground: new THREE.MeshStandardMaterial({
+    //             map: groundTexture,
+    //             roughness: 1.0,
+    //             metalness: 0.0
+    //         })
+    //     };
+
+    //     console.log('Horror textures loaded ✅');
+    // }
 
     render(mazeData, difficulty = 'medium') {  // Add difficulty parameter with default
         this.clearMaze();
