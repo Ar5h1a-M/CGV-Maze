@@ -3,6 +3,7 @@ export class HUD {
         this.gameManager = gameManager;
         this.container = null;
         this.healthBar = null;
+        this.healthText = null; 
         this.staminaBar = null;
         this.minimap = null;
         this.minimapCanvas = null;
@@ -56,8 +57,9 @@ export class HUD {
             transition: width 0.3s;
         `;
         
-        const healthText = document.createElement('div');
-        healthText.style.cssText = `
+        
+        this.healthText = document.createElement('div');
+        this.healthText.style.cssText = `
             position: absolute;
             top: 0;
             left: 0;
@@ -68,10 +70,10 @@ export class HUD {
             font-weight: bold;
             text-shadow: 1px 1px 2px black;
         `;
-        healthText.textContent = 'HP';
-        
+        this.healthText.textContent = 'HP: 100 / 100';
+
         healthContainer.appendChild(this.healthBar);
-        healthContainer.appendChild(healthText);
+        healthContainer.appendChild(this.healthText);
         this.container.appendChild(healthContainer);
     }
     
@@ -387,10 +389,17 @@ export class HUD {
     }
 
     update() {
-        // Health
+        
         if (this.healthBar) {
             const percent = (this.gameManager.playerData.health / this.gameManager.playerData.maxHealth) * 100;
             this.healthBar.style.width = `${percent}%`;
+
+            
+            if (this.healthText) {
+                const hp = Math.max(0, Math.round(this.gameManager.playerData.health));
+                const maxHp = Math.round(this.gameManager.playerData.maxHealth);
+                this.healthText.textContent = `HP: ${hp} / ${maxHp}`;
+            }
         }
         
         // Stamina
@@ -425,7 +434,7 @@ export class HUD {
             blockingIndicator.style.display = isBlocking ? 'block' : 'none';
         }
         
-        // Update flashlight indicator
+        // Flashlight indicator
         const flashlightIndicator = document.getElementById('flashlight-indicator');
         if (!flashlightIndicator) {
             this.createFlashlightIndicator();
