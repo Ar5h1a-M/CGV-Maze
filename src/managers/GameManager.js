@@ -15,19 +15,21 @@ export class GameManager {
         this.flashlightActive = false;
         this.visibilityBoost = 3;
         this.playerData.isBlocking = false;
+        this.isPlayerDead = false;
     }
-    
+
     setSceneManager(sceneManager) {
         this.sceneManager = sceneManager;
     }
-    
+
     startGame(difficulty) {
         this.currentDifficulty = difficulty;
         this.resetPlayerData();
         this.gameState = 'playing';
+        this.isPlayerDead = false;
         this.sceneManager.switchToScene('game');
     }
-    
+
     resetPlayerData() {
         this.playerData = {
             health: 100,
@@ -36,24 +38,74 @@ export class GameManager {
             maxStamina: 100,
             inventory: new Array(5).fill(null),
             score: 0,
-            time: 0
+            time: 0,
+            isBlocking: false
         };
+        this.isPlayerDead = false;
     }
-    
+
     updatePlayerHealth(change) {
-        this.playerData.health = Math.max(0, Math.min(this.playerData.maxHealth, this.playerData.health + change));
-        if (this.playerData.health <= 0) {
-            this.gameOver();
+        if (this.isPlayerDead) return;
+
+        this.playerData.health = Math.max(
+            0,
+            Math.min(this.playerData.maxHealth, this.playerData.health + change)
+        );
+
+        if (this.playerData.health <= 0 && !this.isPlayerDead) {
+            this.playerDied();
         }
     }
-    
+
     updatePlayerStamina(change) {
-        this.playerData.stamina = Math.max(0, Math.min(this.playerData.maxStamina, this.playerData.stamina + change));
+        this.playerData.stamina = Math.max(
+            0,
+            Math.min(this.playerData.maxStamina, this.playerData.stamina + change)
+        );
+
+        if (this.playerData.stamina <= 0) {
+            this.disableSprinting();
+        }
+    }
+
+    disableSprinting() {
+        // Hooked by Player.js
+    }
+
+    // Unified game end handler (death or win)
+    endGame(result) {
+        this.gameState = result === 'win' ? 'win' : 'gameOver';
+        this.isPlayerDead = result === 'lose';
+
+        const message = result === 'win' ? '🏆 YOU ESCAPED!' : '💀 YOU DIED';
+        console.log(message);
+        alert(message);
+
+        //Small delay before returning to menu
+        setTimeout(() => {
+            if (window.SceneManagerRef) {
+                window.SceneManagerRef.switchToScene('menu');
+            } else if (this.sceneManager) {
+                this.sceneManager.switchToScene('menu');
+            } else {
+                console.warn('⚠️ SceneManager not found for reset!');
+            }
+        }, 1500);
+    }
+
+    playerDied() {
+        if (this.isPlayerDead) return;
+        this.endGame('lose');
+    }
+
+    winGame() {
+        this.endGame('win');
     }
 
     activateFlashlight() {
         this.flashlightActive = true;
-        this.visibilityBoost = 3.0; // Additional visibility radius
+        this.hasFlashlight = true;
+        this.visibilityBoost = 3.0;
         console.log('🔦 Flashlight activated! Increased visibility');
     }
 
@@ -62,11 +114,17 @@ export class GameManager {
         this.visibilityBoost = 0;
         console.log('🔦 Flashlight deactivated');
     }
-    
+
     addToInventory(item) {
-        const emptySlot = this.playerData.inventory.findIndex(slot => slot === null);
+        const emptySlot = this.playerData.inventory.findIndex((slot) => slot === null);
         if (emptySlot !== -1) {
             this.playerData.inventory[emptySlot] = item;
+
+            if (item.type === 'flashlight' && this.hud) {
+                const indicator = document.getElementById('flashlight-indicator');
+                if (indicator) indicator.style.display = 'block';
+            }
+
             return true;
         }
         return false;
@@ -75,26 +133,20 @@ export class GameManager {
     useInventoryItem(slot) {
         const item = this.playerData.inventory[slot];
         if (item) {
-            switch(item.type) {
+            switch (item.type) {
                 case 'flashlight':
-                    if (!this.flashlightActive) {
-                    this.activateFlashlight();
-                    } else {
-                        this.deactivateFlashlight();
-                    }
-                    console.log('Used flashlight - visibility increased');
-                    // Don't remove from inventory - flashlight is toggleable
-                    return item;
+                    if (!this.flashlightActive) this.activateFlashlight();
+                    else this.deactivateFlashlight();
+                    break;
                 case 'trenchcoat':
-                    // Reduce ambient damage
-                    console.log('Used trenchcoat - ambient damage reduced');
+                    console.log('🧥 Used trenchcoat - ambient damage reduced');
                     break;
                 case 'carrot':
                     this.updatePlayerHealth(25);
-                    console.log('Used carrot - healed 25 HP');
+                    console.log('🥕 Used carrot - healed 25 HP');
                     break;
                 case 'note':
-                    console.log('Read note - lore revealed');
+                    console.log('📜 Read note - lore revealed');
                     break;
             }
             this.playerData.inventory[slot] = null;
@@ -102,31 +154,18 @@ export class GameManager {
         }
         return null;
     }
-    
 
-    
-    gameOver() {
-        this.gameState = 'gameOver';
-        // Show game over screen
-    }
-    
-    winGame() {
-        this.gameState = 'win';
-        // Show win screen and return to menu
-        setTimeout(() => {
-            this.sceneManager.switchToScene('menu');
-        }, 3000);
-    }
-    
     update(deltaTime) {
-        if (this.gameState === 'playing') {
+        if (this.gameState === 'playing' && !this.isPlayerDead) {
             this.playerData.time += deltaTime;
-            
-            // Ambient health reduction
-            this.updatePlayerHealth(-0.1 * deltaTime);
+
+            if (this.currentDifficulty === 'easy') {
+                this.updatePlayerHealth(-0.1 * deltaTime);
+            } else if (this.currentDifficulty === 'medium') {
+                this.updatePlayerHealth(-0.12 * deltaTime);
+            } else if (this.currentDifficulty === 'hard') {
+                this.updatePlayerHealth(-0.15 * deltaTime);
+            }
         }
     }
-
-
-
 }

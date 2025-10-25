@@ -43,7 +43,7 @@ export class Enemy {
                 scale: 0.4, isPoison: false, poisonDamage: 0, poisonDuration: 0
             },
             zombie: {
-                health: 30, damage: 20, speed: 0.6, color: 0x2d5a27,
+                health: 30, damage: 10, speed: 0.6, color: 0x2d5a27,
                 scale: 0.8, isPoison: false, poisonDamage: 0, poisonDuration: 0
             },
             glowing_spider: {
@@ -60,7 +60,7 @@ export class Enemy {
             }
         };
 
-        const difficultyMultipliers = { easy: 0.7, medium: 1.0, hard: 1.5 };
+        const difficultyMultipliers = { easy: 0.7, medium: 1.0, hard: 1.2 };
         const baseStats = stats[this.type];
         const multiplier = difficultyMultipliers[this.difficulty];
 
