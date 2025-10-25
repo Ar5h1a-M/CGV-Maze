@@ -563,6 +563,7 @@ export class HUD {
         `;
         indicator.id = 'flashlight-indicator';
         indicator.textContent = '🔦 OFF';
+        indicator.style.display = 'none';
         this.container.appendChild(indicator);
     }
 
@@ -607,9 +608,20 @@ export class HUD {
         
         const flashlightIndicator = document.getElementById('flashlight-indicator');
         if (flashlightIndicator) {
-            flashlightIndicator.textContent = this.gameManager.flashlightActive ? '🔦 ON' : '🔦 OFF';
+         
+            if (!this.gameManager.hasFlashlight) {
+            flashlightIndicator.style.display = 'none';
+            return;
         }
-    }
+
+      
+        flashlightIndicator.style.display = 'block';
+
+        
+        flashlightIndicator.textContent = this.gameManager.flashlightActive ? '🔦 ON' : '🔦 OFF';
+        flashlightIndicator.style.opacity = this.gameManager.flashlightActive ? '1' : '0.4';
+        }
+        }
 
     // ... rest of your existing methods (setMazeData, calculateCellSize, updateMinimap, etc.) ...
     setMazeData(mazeData) {

@@ -72,7 +72,7 @@ export class GameManager {
         // Hooked by Player.js
     }
 
-    // ✅ Unified game end handler (death or win)
+    // Unified game end handler (death or win)
     endGame(result) {
         this.gameState = result === 'win' ? 'win' : 'gameOver';
         this.isPlayerDead = result === 'lose';
@@ -81,7 +81,7 @@ export class GameManager {
         console.log(message);
         alert(message);
 
-        // ✅ Small delay before returning to menu
+        //Small delay before returning to menu
         setTimeout(() => {
             if (window.SceneManagerRef) {
                 window.SceneManagerRef.switchToScene('menu');
@@ -104,6 +104,7 @@ export class GameManager {
 
     activateFlashlight() {
         this.flashlightActive = true;
+        this.hasFlashlight = true;
         this.visibilityBoost = 3.0;
         console.log('🔦 Flashlight activated! Increased visibility');
     }
@@ -118,6 +119,12 @@ export class GameManager {
         const emptySlot = this.playerData.inventory.findIndex((slot) => slot === null);
         if (emptySlot !== -1) {
             this.playerData.inventory[emptySlot] = item;
+
+            if (item.type === 'flashlight' && this.hud) {
+                const indicator = document.getElementById('flashlight-indicator');
+                if (indicator) indicator.style.display = 'block';
+            }
+
             return true;
         }
         return false;
