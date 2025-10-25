@@ -331,7 +331,7 @@ returnToMenu() {
             } else if (this.currentDifficulty === 'medium') {
                 this.updatePlayerHealth(-0.12 * deltaTime); // -1 every ~8.3 seconds
             } else if (this.currentDifficulty === 'hard') {
-                this.updatePlayerHealth(-2.0 * deltaTime); // -1 every ~6.7 seconds
+                this.updatePlayerHealth(-0.15 * deltaTime); // -1 every ~6.7 seconds
             }
             
             // Debug logging to track ambient damage
