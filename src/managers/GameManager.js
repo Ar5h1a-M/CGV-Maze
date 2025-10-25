@@ -65,34 +65,153 @@ export class GameManager {
         if (this._noteBlipEl && noteBlip) this._noteBlipEl.src = noteBlip;
     }
 
-    startGame(difficulty) {
-        this.currentDifficulty = difficulty;
-        this.resetPlayerData();
-        this.gameState = 'playing';
-        this.isPlayerDead = false;
+startGame(difficulty) {
+    this.currentDifficulty = difficulty;
+    this.resetPlayerData();
+    this.gameState = 'playing';
+    this.isPlayerDead = false;
+    this.flashlightActive = false; // Reset flashlight state
+    this.hasFlashlight = false; // Reset flashlight ownership
 
-        // Show intro overlay immediately
-        this._showIntroOverlay();
+    // Show intro overlay immediately
+    this._showIntroOverlay();
 
-        // Arm audio start so it begins right after the first user gesture (click/key)
-        this._armUserGestureForAudioStart();
+    // Arm audio start so it begins right after the first user gesture (click/key)
+    this._armUserGestureForAudioStart();
 
-        // Switch to the actual game scene
-        this.sceneManager.switchToScene('game');
+    // Switch to the actual game scene
+    this.sceneManager.switchToScene('game');
+}
+
+// ✅ Enhanced reset method
+resetPlayerData() {
+    this.playerData = {
+        health: 100,
+        maxHealth: 100,
+        stamina: 100,
+        maxStamina: 100,
+        inventory: new Array(5).fill(null),
+        score: 0,
+        time: 0,
+        isBlocking: false
+    };
+    this.isPlayerDead = false;
+    this.flashlightActive = false;
+    this.hasFlashlight = false;
+}
+
+resetGame() {
+    this.gameState = 'menu';
+    this.currentDifficulty = null;
+    this.resetPlayerData();
+    this.flashlightActive = false;
+    this.visibilityBoost = 0;
+    this.isPlayerDead = false;
+    
+    // Stop any ongoing audio
+    if (this.audio) {
+        this.audio.stopAmbience();
+    }
+}
+
+// ✅ Unified game end handler (death or win) - FIXED
+endGame(result) {
+    this.gameState = result === 'win' ? 'win' : 'gameOver';
+    this.isPlayerDead = result === 'lose';
+
+    const message = result === 'win' ? '🏆 YOU ESCAPED!' : '💀 YOU DIED';
+    console.log(message);
+    
+    // ✅ Reset game state immediately
+    
+    
+    this.showGameOverScreen(message, result);
+}
+
+// Add a proper game over screen method
+showGameOverScreen(message, result) {
+    // Remove any existing game over screen
+    const existingScreen = document.getElementById('game-over-screen');
+    if (existingScreen) {
+        existingScreen.remove();
     }
 
-    resetPlayerData() {
-        this.playerData = {
-            health: 100,
-            maxHealth: 100,
-            stamina: 100,
-            maxStamina: 100,
-            inventory: new Array(5).fill(null),
-            score: 0,
-            time: 0,
-            isBlocking: false
-        };
-        this.isPlayerDead = false;
+    const gameOverScreen = document.createElement('div');
+    gameOverScreen.id = 'game-over-screen';
+    gameOverScreen.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+        color: ${result === 'win' ? '#00ff00' : '#ff0000'};
+        font-family: 'Courier New', monospace;
+        text-align: center;
+    `;
+
+    gameOverScreen.innerHTML = `
+        <h1 style="font-size: 3em; margin-bottom: 20px; text-shadow: 0 0 10px currentColor;">${message}</h1>
+        <p style="font-size: 1.5em; margin-bottom: 30px;">Time: ${Math.floor(this.playerData.time)} seconds</p>
+        <button id="return-to-menu" style="
+            padding: 15px 30px;
+            font-size: 1.2em;
+            background: #2a0a0a;
+            color: #8b0000;
+            border: 2px solid #8b0000;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s;
+        ">RETURN TO MENU</button>
+    `;
+
+    this.resetPlayerData();
+
+    document.body.appendChild(gameOverScreen);
+
+    // Add event listener for the return button
+    document.getElementById('return-to-menu').onclick = () => {
+        this.returnToMenu();
+    };
+
+    // Auto-return after 5 seconds if no interaction
+    setTimeout(() => {
+        if (document.getElementById('game-over-screen')) {
+            this.returnToMenu();
+        }
+    }, 10000);
+}
+
+// Add returnToMenu method
+returnToMenu() {
+    this.resetGame();
+    
+    // Remove game over screen if it exists
+    const gameOverScreen = document.getElementById('game-over-screen');
+    if (gameOverScreen) {
+        gameOverScreen.remove();
+    }
+
+    // Switch to menu scene
+    if (window.SceneManagerRef) {
+        window.SceneManagerRef.switchToScene('menu');
+    } else if (this.sceneManager) {
+        this.sceneManager.switchToScene('menu');
+    }
+}
+
+    playerDied() {
+        if (this.isPlayerDead) return;
+        this.endGame('lose');
+    }
+
+    winGame() {
+        this.endGame('win');
     }
 
     /* ---------------- Health / Stamina / State ---------------- */
@@ -122,34 +241,29 @@ export class GameManager {
     }
 
     // ✅ Unified game end handler (death or win)
-    endGame(result) {
-        this.gameState = result === 'win' ? 'win' : 'gameOver';
-        this.isPlayerDead = result === 'lose';
+    // endGame(result) {
+    //     this.gameState = result === 'win' ? 'win' : 'gameOver';
+    //     this.isPlayerDead = result === 'lose';
 
-        const message = result === 'win' ? '🏆 YOU ESCAPED!' : '💀 YOU DIED';
-        console.log(message);
-        alert(message);
+    //     const message = result === 'win' ? '🏆 YOU ESCAPED!' : '💀 YOU DIED';
+    //     console.log(message);
+    //     alert(message);
 
-        // ✅ Small delay before returning to menu
-        setTimeout(() => {
-            if (window.SceneManagerRef) {
-                window.SceneManagerRef.switchToScene('menu');
-            } else if (this.sceneManager) {
-                this.sceneManager.switchToScene('menu');
-            } else {
-                console.warn('⚠️ SceneManager not found for reset!');
-            }
-        }, 1500);
-    }
+    //     // ✅ Small delay before returning to menu
+    //     setTimeout(() => {
+    //         if (window.SceneManagerRef) {
+    //             window.SceneManagerRef.switchToScene('menu');
+    //         } else if (this.sceneManager) {
+    //             this.sceneManager.switchToScene('menu');
+    //         } else {
+    //             console.warn('⚠️ SceneManager not found for reset!');
+    //         }
+    //     }, 1500);
+    // }
 
-    playerDied() {
-        if (this.isPlayerDead) return;
-        this.endGame('lose');
-    }
 
-    winGame() {
-        this.endGame('win');
-    }
+
+
 
     activateFlashlight() {
         this.flashlightActive = true;
@@ -203,24 +317,26 @@ export class GameManager {
         this.gameState = 'gameOver';
     }
 
-    winGame() {
-        this.gameState = 'win';
-        setTimeout(() => {
-            this.sceneManager.switchToScene('menu');
-        }, 3000);
-    }
+
+    
 
     update(deltaTime) {
-        if (this.gameState === 'playing' && !this.isPlayerDead) {
+        // Only process ambient damage if we're actually playing and player is alive
+        if (this.gameState === 'playing' && !this.isPlayerDead && this.playerData.health > 0) {
             this.playerData.time += deltaTime;
 
-            // Ambient health reduction (only if player is alive)
+            // Ambient health reduction (only if player is alive and has health)
             if (this.currentDifficulty === 'easy') {
                 this.updatePlayerHealth(-0.1 * deltaTime); // -1 every 10 seconds
             } else if (this.currentDifficulty === 'medium') {
                 this.updatePlayerHealth(-0.12 * deltaTime); // -1 every ~8.3 seconds
             } else if (this.currentDifficulty === 'hard') {
-                this.updatePlayerHealth(-0.15 * deltaTime); // -1 every ~6.7 seconds
+                this.updatePlayerHealth(-2.0 * deltaTime); // -1 every ~6.7 seconds
+            }
+            
+            // Debug logging to track ambient damage
+            if (Math.random() < 0.01) {
+                console.log(`🌫️ Ambient damage applied - HP: ${Math.round(this.playerData.health)}`);
             }
         }
     }
@@ -290,4 +406,16 @@ export class GameManager {
             console.warn('Could not start ambience:', e);
         }
     }
+
+    // Debug method to check game state
+debugGameState() {
+    console.log('🎮 Game State Debug:');
+    console.log(`- Game State: ${this.gameState}`);
+    console.log(`- Player Dead: ${this.isPlayerDead}`);
+    console.log(`- Player Health: ${this.playerData.health}`);
+    console.log(`- Flashlight Active: ${this.flashlightActive}`);
+    console.log(`- Current Difficulty: ${this.currentDifficulty}`);
 }
+}
+
+

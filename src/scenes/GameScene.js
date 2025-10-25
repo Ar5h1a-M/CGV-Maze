@@ -737,12 +737,36 @@ export class GameScene {
     }
 
     cleanup() {
-        if (this.hud) this.hud.cleanup();
-        if (this.fogOfWar) this.fogOfWar.clear();
-        // clean up note UI
-        if (this.noteUI.overlay) document.body.removeChild(this.noteUI.overlay);
-        if (this.noteUI.prompt) document.body.removeChild(this.noteUI.prompt);
+    // Reset game state
+    if (this.gameManager) {
+        this.gameManager.resetPlayerData();
+        this.gameManager.gameState = 'menu';
+        this.gameManager.isPlayerDead = false;
+        this.gameManager.flashlightActive = false;
+        this.gameManager.hasFlashlight = false;
     }
+    
+    // Clean up HUD
+    if (this.hud) this.hud.cleanup();
+    
+    // Clean up fog of war
+    if (this.fogOfWar) this.fogOfWar.clear();
+    
+    // Clean up note UI
+    if (this.noteUI.overlay) {
+        this.noteUI.overlay.style.display = 'none';
+    }
+    if (this.noteUI.prompt) {
+        this.noteUI.prompt.style.display = 'none';
+    }
+    
+    // Clear arrays
+    this.enemies = [];
+    this.items = [];
+    this.traps = [];
+    
+    console.log('GameScene cleanup complete - ready for fresh start');
+}
 
     // =========================
     // 📝 Note UI helpers
