@@ -117,23 +117,38 @@ export class GameManager {
         }
     }
 
-    playerDied() {
-        if (this.isPlayerDead) return; // Prevent multiple death triggers
-
-        this.isPlayerDead = true;
-        this.gameState = 'gameOver';
-
-        console.log('💀 Player died!');
-
-        // Show death message and return to menu
-        setTimeout(() => {
-            alert('YOU DIED');
-            this.sceneManager.switchToScene('menu');
-        }, 500);
+    disableSprinting() {
+        // Hooked by Player.js
     }
 
-    disableSprinting() {
-        // Hook consumed by Player.js; no-op here
+    // ✅ Unified game end handler (death or win)
+    endGame(result) {
+        this.gameState = result === 'win' ? 'win' : 'gameOver';
+        this.isPlayerDead = result === 'lose';
+
+        const message = result === 'win' ? '🏆 YOU ESCAPED!' : '💀 YOU DIED';
+        console.log(message);
+        alert(message);
+
+        // ✅ Small delay before returning to menu
+        setTimeout(() => {
+            if (window.SceneManagerRef) {
+                window.SceneManagerRef.switchToScene('menu');
+            } else if (this.sceneManager) {
+                this.sceneManager.switchToScene('menu');
+            } else {
+                console.warn('⚠️ SceneManager not found for reset!');
+            }
+        }, 1500);
+    }
+
+    playerDied() {
+        if (this.isPlayerDead) return;
+        this.endGame('lose');
+    }
+
+    winGame() {
+        this.endGame('win');
     }
 
     activateFlashlight() {
@@ -149,7 +164,7 @@ export class GameManager {
     }
 
     addToInventory(item) {
-        const emptySlot = this.playerData.inventory.findIndex(slot => slot === null);
+        const emptySlot = this.playerData.inventory.findIndex((slot) => slot === null);
         if (emptySlot !== -1) {
             this.playerData.inventory[emptySlot] = item;
             return true;
@@ -162,19 +177,15 @@ export class GameManager {
         if (item) {
             switch (item.type) {
                 case 'flashlight':
-                    if (!this.flashlightActive) {
-                        this.activateFlashlight();
-                    } else {
-                        this.deactivateFlashlight();
-                    }
-                    console.log('Used flashlight - visibility increased');
-                    return item;
+                    if (!this.flashlightActive) this.activateFlashlight();
+                    else this.deactivateFlashlight();
+                    break;
                 case 'trenchcoat':
-                    console.log('Used trenchcoat - ambient damage reduced');
+                    console.log('🧥 Used trenchcoat - ambient damage reduced');
                     break;
                 case 'carrot':
                     this.updatePlayerHealth(25);
-                    console.log('Used carrot - healed 25 HP');
+                    console.log('🥕 Used carrot - healed 25 HP');
                     break;
                 case 'note':
                     console.log('Read note - lore revealed');
