@@ -143,7 +143,7 @@ loadTextures() {
     }
 
     createWalls(grid, size) {
-        const wallGeometry = new THREE.BoxGeometry(1, 2, 1);
+        const wallGeometry = new THREE.BoxGeometry(1, 1, 1);
         let wallCount = 0;
 
         for (let z = 0; z < grid.length; z++) {

@@ -7,8 +7,8 @@ export class GameManager {
         this.sceneManager = null;
         this.currentDifficulty = null;
         this.playerData = {
-            health: 100,
-            maxHealth: 100,
+            health: 1000,
+            maxHealth: 1000,
             stamina: 100,
             maxStamina: 100,
             inventory: new Array(5).fill(null),
@@ -86,8 +86,8 @@ startGame(difficulty) {
 // ✅ Enhanced reset method
 resetPlayerData() {
     this.playerData = {
-        health: 100,
-        maxHealth: 100,
+        health: 1000,
+        maxHealth: 1000,
         stamina: 100,
         maxStamina: 100,
         inventory: new Array(5).fill(null),

@@ -100,7 +100,7 @@ export class GameScene {
         this.populateGameWorld(mazeData);
 
         // Flashlight effect
-        this.setupFlashlightEffect();
+        //this.setupFlashlightEffect();
         
         // Create player
         this.player = new Player(this.scene, this.world, this.gameManager, this.renderer);
@@ -557,6 +557,9 @@ export class GameScene {
                     if (collectedItem.type === 'flashlight') {
                         this.player.hasFlashlight = true;
                         this.gameManager.hasFlashlight = true;
+                        // Immediately create the torch model
+                        this.player._createTorchIfNeeded();
+                        console.log('🔦 Flashlight equipped - press F to toggle');
                     }
                     return false; // remove from world
                 }
@@ -674,64 +677,105 @@ export class GameScene {
     }
 
     setupFlashlightEffect() {
-        // --- UPDATED: stronger, wider, shadow-casting spotlight attached to camera ---
-        this.flashlight = new THREE.SpotLight(0xffffee, /*intensity*/ 8, /*distance*/ 40, /*angle*/ Math.PI / 3, /*penumbra*/ 0.25, /*decay*/ 1);
-        this.flashlight.castShadow = true;
-        this.flashlight.shadow.mapSize.set(1024, 1024);
-        this.flashlight.shadow.bias = -0.0001;
+        // // --- UPDATED: stronger, wider, shadow-casting spotlight attached to camera ---
+        // this.flashlight = new THREE.SpotLight(0xffffee, /*intensity*/ 8, /*distance*/ 40, /*angle*/ Math.PI / 3, /*penumbra*/ 0.25, /*decay*/ 1);
+        // this.flashlight.castShadow = true;
+        // this.flashlight.shadow.mapSize.set(1024, 1024);
+        // this.flashlight.shadow.bias = -0.0001;
 
-        this.flashlight.position.set(0, 0, 0);
-        this.flashlight.target.position.set(0, 0, -1);
-        this.flashlight.visible = false;
-        this.camera.add(this.flashlight);
-        this.camera.add(this.flashlight.target);
+        // this.flashlight.position.set(0, 0, 0);
+        // this.flashlight.target.position.set(0, 0, -1);
+        // this.flashlight.visible = false;
+        // this.camera.add(this.flashlight);
+        // this.camera.add(this.flashlight.target);
 
-        // --- ADD: gentle fill so the floor/walls right by you brighten up ---
-        this.flashFill = new THREE.PointLight(0xffffcc, 0.6, 6, 1); // small radius, subtle
-        this.flashFill.visible = false;
-        this.camera.add(this.flashFill);
+        // // --- ADD: gentle fill so the floor/walls right by you brighten up ---
+        // this.flashFill = new THREE.PointLight(0xffffcc, 0.6, 6, 1); // small radius, subtle
+        // this.flashFill.visible = false;
+        // this.camera.add(this.flashFill);
     }
 
-    update() {
-        const deltaTime = this.clock.getDelta();
-        // Don't update game logic if player is dead
-        if (this.gameManager?.isPlayerDead) {
-            return;
-        }
-        if (this.world) this.world.step();
-        if (this.player) {
-            this.player.update(deltaTime);
-            if (this.fogOfWar && this.player.mesh) {
-                const discoveredAreas = this.fogOfWar.update(this.player.mesh.position);
-                if (this.hud) this.hud.updateDiscoveredAreas(discoveredAreas);
+// _updateFlashlightFog() {
+//     if (!this.player || !this.camera || !this.scene.fog) return;
+
+//     const playerFlashlightActive = !!(this.gameManager && this.gameManager.flashlightActive);
+    
+//     if (playerFlashlightActive && this.player.hasFlashlight) {
+//         // Get camera forward direction (where player is looking)
+//         const cameraForward = new THREE.Vector3();
+//         this.camera.getWorldDirection(cameraForward);
+        
+//         // Get player position
+//         const playerPos = this.player.mesh.position;
+        
+//         // Calculate the direction to each fog cell
+//         const expandedFogFar = 7.0; // Extended range when flashlight is on
+        
+//         // For cone-shaped fog, we need to modify the fog material or use a different approach
+//         // Since THREE.Fog is global, we'll simulate the cone effect by combining:
+//         // 1. Base radius clearance (always active)
+//         // 2. Extended cone clearance (flashlight only)
+        
+//         this.scene.fog.near = 1.0;
+//         this.scene.fog.far = expandedFogFar;
+        
+//         // Debug: Show when cone fog is active
+//         if (Math.random() < 0.02) { // 2% chance per frame to avoid spam
+//             console.log('🔦 Flashlight cone fog active - extended to 7 units');
+//         }
+        
+//     } else {
+//         // Standard fog - only base radius clearance
+//         this.scene.fog.near = this._baseFog.near;
+//         this.scene.fog.far = this._baseFog.far;
+//     }
+// }
+
+update() {
+    const deltaTime = this.clock.getDelta();
+    if (this.gameManager?.isPlayerDead) return;
+    
+    if (this.world) this.world.step();
+    
+    if (this.player) {
+        this.player.update(deltaTime);
+        
+        if (this.fogOfWar && this.player.mesh) {
+            // Get the direction the player is looking
+            const playerDirection = new THREE.Vector3();
+            if (this.camera) {
+                this.camera.getWorldDirection(playerDirection);
+                playerDirection.y = 0; // Keep it horizontal for maze navigation
+                playerDirection.normalize();
+                
+                // Debug: Log direction occasionally
+                if (Math.random() < 0.05) {
+                    console.log(`🎯 Camera Direction: (${playerDirection.x.toFixed(2)}, ${playerDirection.z.toFixed(2)})`);
+                }
             }
-            this.checkItemCollection();
-            this.checkEnemyAttacks();
-            this.checkTrapCollisions();
-            this.checkPortalWin();
+            
+            const discoveredAreas = this.fogOfWar.update(this.player.mesh.position, playerDirection);
+            if (this.hud) this.hud.updateDiscoveredAreas(discoveredAreas);
         }
-
-        // --- sync light visibility + relax fog while flashlight is ON ---
-        const lit = !!(this.gameManager && this.gameManager.flashlightActive);
-        if (this.flashlight) this.flashlight.visible = lit;
-        if (this.flashFill) this.flashFill.visible = lit;
-
-        if (this.scene && this.scene.fog) {
-            if (lit) {
-                this.scene.fog.near = 0.5;
-                this.scene.fog.far  = 25;  // farther so the light actually reveals distance
-            } else {
-                this.scene.fog.near = this._baseFog.near;
-                this.scene.fog.far  = this._baseFog.far;
-            }
-        }
-
-        this.enemies.forEach(enemy => { if (enemy.isAlive && this.player) enemy.update(deltaTime, this.player.mesh.position); });
-        this.items.forEach(item => item.update(deltaTime));
-        this.gameManager.update(deltaTime);
-        if (this.hud) this.hud.update();
+        
+        this.checkItemCollection();
+        this.checkEnemyAttacks();
+        this.checkTrapCollisions();
+        this.checkPortalWin();
+    }
+    // Simple global fog adjustment
+    const flashlightActive = !!(this.gameManager && this.gameManager.flashlightActive);
+    if (this.scene && this.scene.fog) {
+        this.scene.fog.far = flashlightActive ? 6.0 : 5.0;
     }
 
+    this.enemies.forEach(enemy => { 
+        if (enemy.isAlive && this.player) enemy.update(deltaTime, this.player.mesh.position); 
+    });
+    this.items.forEach(item => item.update(deltaTime));
+    this.gameManager.update(deltaTime);
+    if (this.hud) this.hud.update();
+}
     getCamera() {
         return this.camera;
     }
