@@ -251,52 +251,94 @@ _createTorchIfNeeded() {
 }
 
 
+    _updateTorch() {
+        if (!this.torchLight || !this._torchTarget || !this.camera) return;
 
+        // Step 1: Get true player body position (right-hand offset)
+        const bodyPos = this.body.translation();
+        const playerPos = new THREE.Vector3(bodyPos.x - 0.1, bodyPos.y + 0.8, bodyPos.z + 0.05);
 
-_updateTorch() {
-    if (!this.torchLight || !this._torchTarget || !this.camera) return;
+        // Step 2: Get facing direction from camera
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).normalize();
 
-    // Step 1: Get true player body position
-    const bodyPos = this.body.translation();
-    const playerPos = new THREE.Vector3(bodyPos.x, bodyPos.y + 0.85, bodyPos.z);
+        // Step 3: Move spotlight & its target
+        const targetPos = playerPos.clone().add(forward.clone().multiplyScalar(8));
+        this.torchLight.position.copy(playerPos);
+        this._torchTarget.position.copy(targetPos);
+        this.torchLight.target = this._torchTarget;
 
-    // Step 2: Get the player/camera facing direction
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).normalize();
+        // Step 4: Flashlight visibility (no change)
+        const isOn = !!this.gameManager?.flashlightActive;
+        this.torchLight.visible = isOn;
 
-    // Step 3: Compute target position ahead
-    const targetPos = playerPos.clone().add(forward.clone().multiplyScalar(8));
+        // Step 5: Gentle flicker for realism
+        if (isOn) {
+            const t = performance.now() * 0.003;
+            this.torchLight.intensity = 2.4 + Math.sin(t * 1.3) * 0.1 + Math.random() * 0.03;
+        }
 
-    // Step 4: Set spotlight position and direction
-    this.torchLight.position.copy(playerPos);
-    this._torchTarget.position.copy(targetPos);
-    this.torchLight.target = this._torchTarget;
+        // Step 6: Make flashlight mesh follow the camera’s direction
+        if (this.torch && this.rightHandGrip) {
+            const cameraQuat = new THREE.Quaternion();
+            this.camera.getWorldQuaternion(cameraQuat);
+            this.torch.quaternion.slerp(cameraQuat, 0.25); // smoother motion follow
+            this.torch.rotateX(-Math.PI / 2.3); // tilt slightly downward
+            this.torch.rotateY(Math.PI); // flip orientation so lens faces forward
+        }
 
-    // Step 5: Make beam visible when flashlight is active
-    const isOn = !!this.gameManager?.flashlightActive;
-    this.torchLight.visible = isOn;
-
-    // Step 6: Apply mild flicker for realism
-    if (isOn) {
-        const t = performance.now() * 0.003;
-        this.torchLight.intensity = 2.5 + Math.sin(t * 1.3) * 0.1 + Math.random() * 0.05;
+        // Step 7: Hide the debug cone completely
+        if (this._torchCone) {
+            this._torchCone.visible = false; // 🔥 hides the translucent cone
+        }
     }
 
-    // Step 7: Visually rotate flashlight to match player direction
-    if (this.torch && this.rightHandGrip) {
-        this.rightHandGrip.updateWorldMatrix(true, false);
-        const handQuat = new THREE.Quaternion();
-        this.rightHandGrip.getWorldQuaternion(handQuat);
-        this.torch.setRotationFromQuaternion(handQuat);
-        this.torch.rotateX(-Math.PI / 2.2); // tilt slightly forward
-    }
 
-    // Step 8: Align the visible beam cone
-    if (this._torchCone) {
-        this._torchCone.visible = isOn;
-        this._torchCone.position.set(0, 0.05, 0.08);
-        this._torchCone.scale.set(1, 1, 1);
-    }
-}
+
+
+// _updateTorch() {
+//     if (!this.torchLight || !this._torchTarget || !this.camera) return;
+
+//     // Step 1: Get true player body position
+//     const bodyPos = this.body.translation();
+//     const playerPos = new THREE.Vector3(bodyPos.x, bodyPos.y + 0.85, bodyPos.z);
+
+//     // Step 2: Get the player/camera facing direction
+//     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).normalize();
+
+//     // Step 3: Compute target position ahead
+//     const targetPos = playerPos.clone().add(forward.clone().multiplyScalar(8));
+
+//     // Step 4: Set spotlight position and direction
+//     this.torchLight.position.copy(playerPos);
+//     this._torchTarget.position.copy(targetPos);
+//     this.torchLight.target = this._torchTarget;
+
+//     // Step 5: Make beam visible when flashlight is active
+//     const isOn = !!this.gameManager?.flashlightActive;
+//     this.torchLight.visible = isOn;
+
+//     // Step 6: Apply mild flicker for realism
+//     if (isOn) {
+//         const t = performance.now() * 0.003;
+//         this.torchLight.intensity = 2.5 + Math.sin(t * 1.3) * 0.1 + Math.random() * 0.05;
+//     }
+
+//     // Step 7: Visually rotate flashlight to match player direction
+//     if (this.torch && this.rightHandGrip) {
+//         this.rightHandGrip.updateWorldMatrix(true, false);
+//         const handQuat = new THREE.Quaternion();
+//         this.rightHandGrip.getWorldQuaternion(handQuat);
+//         this.torch.setRotationFromQuaternion(handQuat);
+//         this.torch.rotateX(-Math.PI / 2.2); // tilt slightly forward
+//     }
+
+//     // Step 8: Align the visible beam cone
+//     if (this._torchCone) {
+//         this._torchCone.visible = isOn;
+//         this._torchCone.position.set(0, 0.05, 0.08);
+//         this._torchCone.scale.set(1, 1, 1);
+//     }
+// }
 
     _getCameraForward(out) {
         out.set(0, 0, -1);
