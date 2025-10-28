@@ -149,7 +149,7 @@ export class FogOfWar {
         });
         
         // Debug visualization (optional)
-        this._debugConeVisualization(playerPosition, coneDirection);
+        //this._debugConeVisualization(playerPosition, coneDirection);
     }
     
     _debugConeVisualization(playerPosition, coneDirection) {

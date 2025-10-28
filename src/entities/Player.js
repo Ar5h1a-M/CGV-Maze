@@ -20,9 +20,9 @@ export class Player {
         this.velocity = new THREE.Vector3();
 
         // Player stats
-        this.moveSpeed = 2;//0.5;
-        this.sprintSpeed = 3;
-        this.jumpForce = 0.7;
+        this.moveSpeed = 0.8;
+        this.sprintSpeed = 1.3;
+        this.jumpForce = 0.2;
         this.isGrounded = false;
 
         // Player state
