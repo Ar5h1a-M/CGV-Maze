@@ -340,6 +340,13 @@ export class HUD {
 
     returnToMenu() {
         if (this.gameManager && this.gameManager.sceneManager) {
+            // Reset game state before returning to menu
+            this.gameManager.resetPlayerData();
+            this.gameManager.gameState = 'menu';
+            this.gameManager.isPlayerDead = false;
+            this.gameManager.flashlightActive = false;
+            this.gameManager.hasFlashlight = false;
+            
             this.gameManager.sceneManager.switchToScene('menu');
         }
     }

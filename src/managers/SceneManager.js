@@ -31,29 +31,35 @@ export class SceneManager {
         this.uiManager = uiManager;
     }
     
-    async switchToScene(sceneName) {
-        if (this.currentScene) {
-            this.currentScene.cleanup?.();
-        }
-        
-        if (sceneName === 'game' && !this.scenes.game) {
-            const { GameScene } = await import('../scenes/GameScene.js');
-            this.scenes.game = new GameScene();
-        }
-        
-        this.currentScene = this.scenes[sceneName];
-        
-        if (this.currentScene) {
-            if (sceneName === 'game') {
-                this.currentScene.init(this.gameManager, this.uiManager, this.renderer);
-            } else {
-                this.currentScene.init(this.gameManager, this.uiManager);
-            }
-            
-            this.camera = this.currentScene.getCamera ? this.currentScene.getCamera() : null;
-            this.animate();
-        }
+async switchToScene(sceneName) {
+    console.log(`🔄 Switching to scene: ${sceneName}`);
+    
+    // Clean up current scene
+    if (this.currentScene) {
+        console.log(`🧹 Cleaning up current scene: ${this.currentScene.constructor.name}`);
+        this.currentScene.cleanup?.();
     }
+    
+    // Initialize new scene
+    if (sceneName === 'game' && !this.scenes.game) {
+        const { GameScene } = await import('../scenes/GameScene.js');
+        this.scenes.game = new GameScene();
+    }
+    
+    this.currentScene = this.scenes[sceneName];
+    
+    if (this.currentScene) {
+        console.log(`🎬 Initializing scene: ${sceneName}`);
+        if (sceneName === 'game') {
+            await this.currentScene.init(this.gameManager, this.uiManager, this.renderer);
+        } else {
+            this.currentScene.init(this.gameManager, this.uiManager);
+        }
+        
+        this.camera = this.currentScene.getCamera ? this.currentScene.getCamera() : null;
+        this.animate();
+    }
+}
     
     animate() {
         requestAnimationFrame(() => this.animate());

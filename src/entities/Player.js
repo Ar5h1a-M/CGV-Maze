@@ -20,10 +20,11 @@ export class Player {
         this.velocity = new THREE.Vector3();
 
         // Player stats
-        this.moveSpeed = 0.5;
-        this.sprintSpeed = 1;
-        this.jumpForce = 0.1;
+        this.moveSpeed = 0.8;
+        this.sprintSpeed = 1.3;
+        this.jumpForce = 0.2;
         this.isGrounded = false;
+        console.log('Player initialized with moveSpeed:', this.moveSpeed, 'sprintSpeed:', this.sprintSpeed);
 
         // Player state
         this.isBlocking = false;
@@ -194,70 +195,151 @@ export class Player {
         hipGroup.add(footL, footR);
     }
 
-    // ---------- Torch creation (called once when you have a flashlight item) ----------
-    _createTorchIfNeeded() {
-        if (this.torch || !this.rightHandGrip) return;
+_createTorchIfNeeded() {
+    if (this.torch || !this.rightHandGrip) return;
 
-        // Simple torch prop: wooden handle + head
-        const handleMat = new THREE.MeshStandardMaterial({ color: 0x6b4f2a, roughness: 0.9, metalness: 0.0 });
-        const headMat   = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6, metalness: 0.1 });
+    // === Flashlight model (metal handle + lens) ===
+    const metalMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 1.0, roughness: 0.3 });
+    const lensMat = new THREE.MeshStandardMaterial({ color: 0xffffee, emissive: 0xffffee, emissiveIntensity: 1.8 });
 
-        const torch = new THREE.Group();
+    const torch = new THREE.Group();
 
-        const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.28, 8), handleMat);
-        handle.castShadow = handle.receiveShadow = true;
-        handle.position.y = -0.14;
-        torch.add(handle);
+    // Handle (main body)
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.25, 16), metalMat);
+    handle.position.y = -0.12;
+    torch.add(handle);
 
-        const head = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.08, 12), headMat);
-        head.castShadow = head.receiveShadow = true;
-        head.position.y = 0.02;
-        torch.add(head);
+    // Head (flashlight front)
+    const head = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.08, 16), lensMat);
+    head.position.y = 0.05;
+    torch.add(head);
 
-        // Slight tilt forward
-        torch.rotation.z = THREE.MathUtils.degToRad(15);
-        torch.rotation.x = THREE.MathUtils.degToRad(-10);
+    // Visual cone (beam appearance)
+    const coneGeo = new THREE.ConeGeometry(0.4, 1.5, 24, 1, true);
+    const coneMat = new THREE.MeshBasicMaterial({
+        color: 0xffffcc,
+        transparent: true,
+        opacity: 0.12,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+    const cone = new THREE.Mesh(coneGeo, coneMat);
+    cone.position.y = 0.1;
+    cone.rotation.x = -Math.PI / 2;
+    torch.add(cone);
+    this._torchCone = cone;
 
-        // Attach to hand grip
-        this.rightHandGrip.add(torch);
-        this.torch = torch;
+    // Make flashlight point forward in player's local space
+    torch.rotation.set(THREE.MathUtils.degToRad(-10), 0, THREE.MathUtils.degToRad(10));
 
-        // Create spotlight that is NOT parented to the player mesh (so it still works in 1st person when mesh is hidden)
-        const spot = new THREE.SpotLight(0xfff2cc, 2.2, 18, Math.PI / 5, 0.35, 1.4);
-        spot.castShadow = true;
-        spot.shadow.mapSize.set(512, 512);
-        spot.visible = false; // will follow gameManager.flashlightActive
+    // Attach torch to right hand grip
+    this.rightHandGrip.add(torch);
+    this.torch = torch;
 
-        const target = new THREE.Object3D();
-        this.scene.add(target);
-        this.scene.add(spot);
-        spot.target = target;
+    // === Spotlight (actual illumination) ===
+    const spot = new THREE.SpotLight(0xfff8cc, 2.8, 12, Math.PI / 12, 0.15, 2.0);
+    spot.castShadow = true;
+    spot.shadow.mapSize.set(1024, 1024);
+    spot.visible = false;
 
-        this.torchLight = spot;
-        this._torchTarget = target;
-    }
+    const target = new THREE.Object3D();
+    this.scene.add(target);
+    this.scene.add(spot);
+    spot.target = target;
+
+    this.torchLight = spot;
+    this._torchTarget = target;
+}
+
 
     _updateTorch() {
-        if (!this.torchLight || !this._torchTarget || !this.rightHandGrip) return;
+        if (!this.torchLight || !this._torchTarget || !this.camera) return;
 
-        // Get world position for the grip
-        this.rightHandGrip.updateWorldMatrix(true, false);
-        this.rightHandGrip.getWorldPosition(this._tmpPos);
+        // Step 1: Get true player body position (right-hand offset)
+        const bodyPos = this.body.translation();
+        const playerPos = new THREE.Vector3(bodyPos.x - 0.1, bodyPos.y + 0.8, bodyPos.z + 0.05);
 
-        // Point mostly where the camera is looking to feel natural
-        const forward = this._getCameraForward(this._tmpDir);
-        const targetPos = this._tmpPos.clone().add(forward.multiplyScalar(4.5));
+        // Step 2: Get facing direction from camera
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).normalize();
 
-        this.torchLight.position.copy(this._tmpPos);
+        // Step 3: Move spotlight & its target
+        const targetPos = playerPos.clone().add(forward.clone().multiplyScalar(8));
+        this.torchLight.position.copy(playerPos);
         this._torchTarget.position.copy(targetPos);
-        this.torchLight.visible = !!this.gameManager?.flashlightActive;
+        this.torchLight.target = this._torchTarget;
 
-        // Gentle flicker so it feels like a real torch/flashlight
-        if (this.torchLight.visible) {
+        // Step 4: Flashlight visibility (no change)
+        const isOn = !!this.gameManager?.flashlightActive;
+        this.torchLight.visible = isOn;
+
+        // Step 5: Gentle flicker for realism
+        if (isOn) {
             const t = performance.now() * 0.003;
-            this.torchLight.intensity = 2.1 + Math.sin(t * 1.7) * 0.08 + Math.random() * 0.04;
+            this.torchLight.intensity = 2.4 + Math.sin(t * 1.3) * 0.1 + Math.random() * 0.03;
+        }
+
+        // Step 6: Make flashlight mesh follow the camera’s direction
+        if (this.torch && this.rightHandGrip) {
+            const cameraQuat = new THREE.Quaternion();
+            this.camera.getWorldQuaternion(cameraQuat);
+            this.torch.quaternion.slerp(cameraQuat, 0.25); // smoother motion follow
+            this.torch.rotateX(-Math.PI / 2.3); // tilt slightly downward
+            this.torch.rotateY(Math.PI); // flip orientation so lens faces forward
+        }
+
+        // Step 7: Hide the debug cone completely
+        if (this._torchCone) {
+            this._torchCone.visible = false; // 🔥 hides the translucent cone
         }
     }
+
+
+
+
+// _updateTorch() {
+//     if (!this.torchLight || !this._torchTarget || !this.camera) return;
+
+//     // Step 1: Get true player body position
+//     const bodyPos = this.body.translation();
+//     const playerPos = new THREE.Vector3(bodyPos.x, bodyPos.y + 0.85, bodyPos.z);
+
+//     // Step 2: Get the player/camera facing direction
+//     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).normalize();
+
+//     // Step 3: Compute target position ahead
+//     const targetPos = playerPos.clone().add(forward.clone().multiplyScalar(8));
+
+//     // Step 4: Set spotlight position and direction
+//     this.torchLight.position.copy(playerPos);
+//     this._torchTarget.position.copy(targetPos);
+//     this.torchLight.target = this._torchTarget;
+
+//     // Step 5: Make beam visible when flashlight is active
+//     const isOn = !!this.gameManager?.flashlightActive;
+//     this.torchLight.visible = isOn;
+
+//     // Step 6: Apply mild flicker for realism
+//     if (isOn) {
+//         const t = performance.now() * 0.003;
+//         this.torchLight.intensity = 2.5 + Math.sin(t * 1.3) * 0.1 + Math.random() * 0.05;
+//     }
+
+//     // Step 7: Visually rotate flashlight to match player direction
+//     if (this.torch && this.rightHandGrip) {
+//         this.rightHandGrip.updateWorldMatrix(true, false);
+//         const handQuat = new THREE.Quaternion();
+//         this.rightHandGrip.getWorldQuaternion(handQuat);
+//         this.torch.setRotationFromQuaternion(handQuat);
+//         this.torch.rotateX(-Math.PI / 2.2); // tilt slightly forward
+//     }
+
+//     // Step 8: Align the visible beam cone
+//     if (this._torchCone) {
+//         this._torchCone.visible = isOn;
+//         this._torchCone.position.set(0, 0.05, 0.08);
+//         this._torchCone.scale.set(1, 1, 1);
+//     }
+// }
 
     _getCameraForward(out) {
         out.set(0, 0, -1);
@@ -379,6 +461,7 @@ export class Player {
     this.body.setLinvel({ x: this.velocity.x, y: this.body.linvel().y, z: this.velocity.z }, true);
 
     const pos = this.body.translation();
+    console.log(`📍 Player position: X: ${pos.x.toFixed(2)}, Y: ${pos.y.toFixed(2)}, Z: ${pos.z.toFixed(2)}`);
     const isOnGround = pos.y <= 1.1 && Math.abs(this.body.linvel().y) < 0.1;
     if (isOnGround && !this.isGrounded) this.isGrounded = true;
     else if (!isOnGround && this.isGrounded) this.isGrounded = false;
