@@ -43,7 +43,7 @@ export class Enemy {
                 scale: 0.4, isPoison: false, poisonDamage: 0, poisonDuration: 0
             },
             zombie: {
-                health: 30, damage: 20, speed: 0.6, color: 0x2d5a27,
+                health: 30, damage: 10, speed: 0.6, color: 0x2d5a27,
                 scale: 0.8, isPoison: false, poisonDamage: 0, poisonDuration: 0
             },
             glowing_spider: {
@@ -60,7 +60,7 @@ export class Enemy {
             }
         };
 
-        const difficultyMultipliers = { easy: 0.7, medium: 1.0, hard: 1.5 };
+        const difficultyMultipliers = { easy: 0.7, medium: 1.0, hard: 1.2 };
         const baseStats = stats[this.type];
         const multiplier = difficultyMultipliers[this.difficulty];
 
@@ -82,16 +82,52 @@ export class Enemy {
     }
 
     spawn() {
+        // create group for enemy parts
         const group = new THREE.Group();
-
+        group.name = this.type; // helpful for debugging/counting in console
+    
+        // texture loader (loads from public/textures/enemies/...)
+        const textureLoader = new THREE.TextureLoader();
+    
+        // choose texture file based on type (glowing types reuse same base texture)
+        let texPath = 'textures/enemies/';
+    
+        if (this.type.includes('spider')) {
+            texPath += 'spider_texture1.png';
+        } else if (this.type.includes('rat')) {
+            texPath += 'rat_texture.png';
+        } else if (this.type.includes('zombie') || this.type.includes('human')) {
+            texPath += 'zombie_tex.png';
+        } else {
+            texPath = null;
+        }
+    
+        // attempt to load texture from textures/enemies/...
+        let enemyTexture = null;
+        if (texPath) {
+            try {
+                enemyTexture = textureLoader.load(texPath);
+                // correct color space for PBR
+                if (enemyTexture && enemyTexture instanceof THREE.Texture && THREE.sRGBEncoding) {
+                    enemyTexture.encoding = THREE.sRGBEncoding;
+                }
+            } catch (err) {
+                console.warn('Could not load enemy texture:', texPath, err);
+                enemyTexture = null;
+            }
+        }
+    
+        // material: uses texture if available, otherwise fallback to flat color
         const material = new THREE.MeshStandardMaterial({
-            color: this.color,
+            map: enemyTexture || null,
+            color: enemyTexture ? 0xffffff : this.color,
             roughness: 0.8,
             metalness: 0.2,
             emissive: this.type.includes('glowing') ? this.color : 0x000000,
             emissiveIntensity: this.type.includes('glowing') ? 0.8 : 0
         });
-
+    
+        // build meshes per type (uses the material above)
         switch (this.type) {
             case 'spider':
             case 'glowing_spider': {
@@ -100,7 +136,7 @@ export class Enemy {
                 const bodyMesh = new THREE.Mesh(bodyGeom, material);
                 bodyMesh.position.set(0, 0.25 * this.scale, 0);
                 group.add(bodyMesh);
-
+    
                 // Legs
                 for (let i = 0; i < 8; i++) {
                     const angle = (i / 8) * Math.PI * 2;
@@ -113,7 +149,7 @@ export class Enemy {
                 }
                 break;
             }
-
+    
             case 'rat':
             case 'glowing_rat': {
                 // Body
@@ -121,13 +157,13 @@ export class Enemy {
                 const bodyMesh = new THREE.Mesh(bodyGeom, material);
                 bodyMesh.position.set(0, 0.2 * this.scale, 0);
                 group.add(bodyMesh);
-
+    
                 // Head
                 const headGeom = new THREE.SphereGeometry(0.12 * this.scale, 12, 12);
                 const headMesh = new THREE.Mesh(headGeom, material);
                 headMesh.position.set(0, 0.25 * this.scale, 0.25 * this.scale);
                 group.add(headMesh);
-
+    
                 // Tail
                 const tailGeom = new THREE.CylinderGeometry(0.03 * this.scale, 0.02 * this.scale, 0.4 * this.scale, 6);
                 const tailMesh = new THREE.Mesh(tailGeom, material);
@@ -136,7 +172,7 @@ export class Enemy {
                 group.add(tailMesh);
                 break;
             }
-
+    
             case 'zombie':
             case 'glowing_human': {
                 // Body
@@ -144,13 +180,13 @@ export class Enemy {
                 const bodyMesh = new THREE.Mesh(bodyGeom, material);
                 bodyMesh.position.set(0, 0.3 * this.scale, 0);
                 group.add(bodyMesh);
-
+    
                 // Head
                 const headGeom = new THREE.SphereGeometry(0.15 * this.scale, 16, 16);
                 const headMesh = new THREE.Mesh(headGeom, material);
                 headMesh.position.set(0, 0.75 * this.scale, 0);
                 group.add(headMesh);
-
+    
                 // Arms
                 ['x', '-x'].forEach(sign => {
                     const armGeom = new THREE.CylinderGeometry(0.05 * this.scale, 0.05 * this.scale, 0.4 * this.scale, 8);
@@ -161,7 +197,7 @@ export class Enemy {
                 });
                 break;
             }
-
+    
             default: {
                 const defaultGeom = new THREE.SphereGeometry(0.3 * this.scale, 8, 8);
                 const defaultMesh = new THREE.Mesh(defaultGeom, material);
@@ -169,30 +205,32 @@ export class Enemy {
                 break;
             }
         }
-
+    
+        // finalise
         group.position.copy(this.position);
         group.castShadow = true;
         group.receiveShadow = true;
         this.scene.add(group);
         this.mesh = group;
-
+    
         // Physics
         const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
             .setTranslation(this.position.x, this.position.y, this.position.z)
             .lockRotations();
         this.body = this.world.createRigidBody(bodyDesc);
-
+    
         let colliderDesc;
         if (this.type.includes('spider') || this.type.includes('rat')) {
             colliderDesc = RAPIER.ColliderDesc.ball(0.3 * this.scale);
         } else {
             colliderDesc = RAPIER.ColliderDesc.capsule(0.3 * this.scale, 0.15 * this.scale);
         }
-
+    
         this.collider = this.world.createCollider(colliderDesc, this.body);
-
+    
         console.log(`Spawned ${this.type} at`, this.position);
     }
+    
 
     update(deltaTime, playerPosition) {
         if (!this.isAlive || !this.mesh) return;

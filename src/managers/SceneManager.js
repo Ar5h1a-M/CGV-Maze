@@ -9,11 +9,11 @@ export class SceneManager {
         this.scenes = {};
         this.gameManager = null;
         this.uiManager = null;
-        
-        // Don't create a camera here - let each scene manage its own
+
+        // ✅ NEW: Allow GameManager to call back to this SceneManager
+        if (window) window.SceneManagerRef = this;
+
         this.camera = null;
-        
-        // Initialize scenes
         this.initScenes();
     }
     
@@ -31,51 +31,51 @@ export class SceneManager {
         this.uiManager = uiManager;
     }
     
-    async switchToScene(sceneName) {
-        if (this.currentScene) {
-            this.currentScene.cleanup();
-        }
-        
-        // Dynamically import GameScene if needed
-        if (sceneName === 'game' && !this.scenes.game) {
-            const { GameScene } = await import('../scenes/GameScene.js');
-            this.scenes.game = new GameScene();
-        }
-        
-        this.currentScene = this.scenes[sceneName];
-        
-        if (this.currentScene) {
-            // Pass the renderer to GameScene for mouse control
-            if (sceneName === 'game') {
-                this.currentScene.init(this.gameManager, this.uiManager, this.renderer);
-            } else {
-                this.currentScene.init(this.gameManager, this.uiManager);
-            }
-            
-            // Get the camera from the current scene
-            this.camera = this.currentScene.getCamera ? this.currentScene.getCamera() : null;
-            
-            this.animate();
-        }
+async switchToScene(sceneName) {
+    console.log(`🔄 Switching to scene: ${sceneName}`);
+    
+    // Clean up current scene
+    if (this.currentScene) {
+        console.log(`🧹 Cleaning up current scene: ${this.currentScene.constructor.name}`);
+        this.currentScene.cleanup?.();
     }
+    
+    // Initialize new scene
+    if (sceneName === 'game' && !this.scenes.game) {
+        const { GameScene } = await import('../scenes/GameScene.js');
+        this.scenes.game = new GameScene();
+    }
+    
+    this.currentScene = this.scenes[sceneName];
+    
+    if (this.currentScene) {
+        console.log(`🎬 Initializing scene: ${sceneName}`);
+        if (sceneName === 'game') {
+            await this.currentScene.init(this.gameManager, this.uiManager, this.renderer);
+        } else {
+            this.currentScene.init(this.gameManager, this.uiManager);
+        }
+        
+        this.camera = this.currentScene.getCamera ? this.currentScene.getCamera() : null;
+        this.animate();
+    }
+}
     
     animate() {
         requestAnimationFrame(() => this.animate());
         
-        if (this.currentScene && this.currentScene.update) {
+        if (this.currentScene?.update) {
             this.currentScene.update();
         }
         
-        // Use the current scene's camera if available, otherwise use the scene manager's camera
         const cameraToUse = this.currentScene?.getCamera ? this.currentScene.getCamera() : this.camera;
         
-        if (this.currentScene && this.currentScene.scene && cameraToUse) {
+        if (this.currentScene?.scene && cameraToUse) {
             this.renderer.render(this.currentScene.scene, cameraToUse);
         }
     }
     
     onWindowResize() {
-        // Update the current scene's camera if it exists
         const currentCamera = this.currentScene?.getCamera ? this.currentScene.getCamera() : this.camera;
         if (currentCamera) {
             currentCamera.aspect = window.innerWidth / window.innerHeight;

@@ -19,8 +19,7 @@ export class CameraController {
         this.yaw = 0;
 
         // Third-person settings
-        this.thirdPersonDistance = 4;
-        this.thirdPersonHeight = 1.8;
+        this.thirdPersonDistance = 1; // This is the *ideal* max distance
         this.cameraSmoothing = 0.1;
         this.rotationSmoothing = 0.1;
 
@@ -117,28 +116,35 @@ export class CameraController {
     setupThirdPerson() {
         // Initialize third-person with camera behind player
         this.yaw = 0;
-        this.pitch = 0.3;
+        this.pitch = 0.3; // Start with a slight downward angle
 
         console.log('Third-person camera setup complete');
     }
 
+    // This function now correctly calculates a 3D spherical offset
+    // based on both YAW (horizontal) and PITCH (vertical) mouse movement.
     calculateIdealOffset() {
-        // Calculate where the camera should be ideally (behind and above player)
+        // Calculate spherical coordinates for the offset
+        const horizontalDistance = this.thirdPersonDistance * Math.cos(this.pitch);
+        const verticalDistance = this.thirdPersonDistance * Math.sin(this.pitch);
+
         this.idealOffset.set(
-            -Math.sin(this.yaw) * this.thirdPersonDistance,
-            this.thirdPersonHeight,
-            -Math.cos(this.yaw) * this.thirdPersonDistance
+            -Math.sin(this.yaw) * horizontalDistance,
+            verticalDistance,
+            -Math.cos(this.yaw) * horizontalDistance
         );
         return this.idealOffset;
     }
 
-    checkCameraCollision(playerPosition) {
+    // Changed parameter to 'pivotPosition' for clarity.
+    // This is the point we orbit around (e.g., the player's head).
+    checkCameraCollision(pivotPosition) {
         const idealOffset = this.calculateIdealOffset();
-        const idealCameraPos = new THREE.Vector3().copy(playerPosition).add(idealOffset);
-
-        // Ray from player to ideal camera position
+        
+        // Ray from pivot to ideal camera position
         const direction = idealOffset.clone().normalize();
-        this.raycaster.set(playerPosition, direction);
+        // Raycast from the pivot, not the player's feet
+        this.raycaster.set(pivotPosition, direction);
 
         // Get all collidable objects (walls, obstacles)
         const collidableObjects = [];
@@ -161,16 +167,13 @@ export class CameraController {
 
         if (intersects.length > 0) {
             const firstIntersect = intersects[0];
+            // Check if the collision is closer than our ideal distance
             if (firstIntersect.distance < this.thirdPersonDistance - this.collisionBuffer) {
                 // Camera would hit a wall, adjust distance
                 const adjustedDistance = Math.max(0.5, firstIntersect.distance - this.collisionBuffer);
 
-                // Calculate new offset with adjusted distance
-                return new THREE.Vector3(
-                    -Math.sin(this.yaw) * adjustedDistance,
-                    this.thirdPersonHeight * (adjustedDistance / this.thirdPersonDistance),
-                    -Math.cos(this.yaw) * adjustedDistance
-                );
+                // We just scale the ideal offset vector down to the collision distance.
+                return idealOffset.clone().setLength(adjustedDistance);
             }
         }
 
@@ -178,23 +181,30 @@ export class CameraController {
         return idealOffset.clone();
     }
 
+    // This function is updated to use a 'pivot' point (lookAtTarget)
+    // for all calculations, making the orbit and collision work correctly.
     updateThirdPersonPosition(playerPosition) {
         if (!playerPosition) return;
 
-        // Get adjusted camera position with collision
-        const adjustedOffset = this.checkCameraCollision(playerPosition);
-        const targetCameraPos = new THREE.Vector3().copy(playerPosition).add(adjustedOffset);
+        // Define the PIVOT point (where the camera orbits around)
+        // This is the same point we will also LookAt.
+        const lookAtTarget = new THREE.Vector3(
+            playerPosition.x,
+            playerPosition.y + 1.2, // Player's chest/head level
+            playerPosition.z
+        );
+
+        // Get adjusted camera position, checking for collisions from the PIVOT
+        const adjustedOffset = this.checkCameraCollision(lookAtTarget);
+        
+        // The target position is the PIVOT + the (collision-adjusted) offset
+        const targetCameraPos = new THREE.Vector3().copy(lookAtTarget).add(adjustedOffset);
 
         // Smooth camera movement
         this.smoothedPosition.lerp(targetCameraPos, this.cameraSmoothing);
         this.camera.position.copy(this.smoothedPosition);
 
-        // Look at player chest level
-        const lookAtTarget = new THREE.Vector3(
-            playerPosition.x,
-            playerPosition.y + 1.2,
-            playerPosition.z
-        );
+        // Look at the pivot point
         this.camera.lookAt(lookAtTarget);
     }
     
@@ -210,29 +220,29 @@ export class CameraController {
         if (!this.isMouseLocked) return;
         
          if (this.mouseX !== 0 || this.mouseY !== 0) {
-            if (this.currentMode === this.modes.FIRST_PERSON) {
-                // First-person: direct camera control
-                this.yaw -= this.mouseX * this.sensitivity;
-                this.pitch -= this.mouseY * this.sensitivity;
-                this.pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, this.pitch));
-            } else {
-                // Third-person: orbit around player with limits
-                this.yaw -= this.mouseX * this.sensitivity;
-                this.pitch -= this.mouseY * this.sensitivity;
+             if (this.currentMode === this.modes.FIRST_PERSON) {
+                 // First-person: direct camera control
+                 this.yaw -= this.mouseX * this.sensitivity;
+                 this.pitch -= this.mouseY * this.sensitivity;
+                 this.pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, this.pitch));
+             } else {
+                 // Third-person: orbit around player with limits
+                 this.yaw -= this.mouseX * this.sensitivity;
+                 this.pitch -= this.mouseY * this.sensitivity;
 
-                // Apply pitch limits to prevent awkward angles
-                this.pitch = Math.max(this.minPitch, Math.min(this.maxPitch, this.pitch));
-            }
+                 // Apply pitch limits to prevent awkward angles
+                 this.pitch = Math.max(this.minPitch, Math.min(this.maxPitch, this.pitch));
+             }
 
-            this.mouseX = 0;
-            this.mouseY = 0;
-        }
+             this.mouseX = 0;
+             this.mouseY = 0;
+         }
 
-        if (this.currentMode === this.modes.FIRST_PERSON) {
-            this.updateFirstPerson(playerPosition);
-        } else {
-            this.updateThirdPersonPosition(playerPosition);
-        }
+         if (this.currentMode === this.modes.FIRST_PERSON) {
+             this.updateFirstPerson(playerPosition);
+         } else {
+             this.updateThirdPersonPosition(playerPosition);
+         }
     }
 
     updateFirstPerson(playerPosition) {
@@ -267,11 +277,6 @@ export class CameraController {
             // but projected onto the horizontal plane
             forward.set(cameraDirection.x, 0, cameraDirection.z);
             forward.normalize();
-
-            // Debug: log directions to verify
-            if (Math.random() < 0.01) {
-                console.log('Third-person forward:', forward);
-            }
         }
         return forward;
     }
@@ -281,18 +286,14 @@ export class CameraController {
         if (this.currentMode === this.modes.FIRST_PERSON) {
             // First-person: normal right vector
             const forward = this.getForwardVector();
-            right.crossVectors(new THREE.Vector3(0, 1, 0), forward);
+            right.crossVectors(forward, new THREE.Vector3(0, 1, 0)); // Corrected order
             right.normalize();
         } else {
             // Third-person: calculate right from forward vector
             const forward = this.getForwardVector();
-            right.crossVectors(new THREE.Vector3(0, 1, 0), forward);
+            // This is the corrected line for A/D controls
+            right.crossVectors(forward, new THREE.Vector3(0, 1, 0));
             right.normalize();
-
-            // Debug: log directions to verify
-            if (Math.random() < 0.01) {
-                console.log('Third-person right:', right);
-            }
         }
         return right;
     }
@@ -315,5 +316,4 @@ export class CameraController {
         this.yaw = 0;
         this.pitch = 0.3;
     }
-
 }
