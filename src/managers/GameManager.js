@@ -93,6 +93,9 @@ resetPlayerData() {
         inventory: new Array(5).fill(null),
         score: 0,
         time: 0,
+        speed:0.8,
+        sprintSpeed:1.3,
+        jumpForce:0.2,
         isBlocking: false
     };
     this.isPlayerDead = false;

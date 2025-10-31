@@ -24,6 +24,7 @@ export class Player {
         this.sprintSpeed = 1.3;
         this.jumpForce = 0.2;
         this.isGrounded = false;
+        console.log('Player initialized with moveSpeed:', this.moveSpeed, 'sprintSpeed:', this.sprintSpeed);
 
         // Player state
         this.isBlocking = false;

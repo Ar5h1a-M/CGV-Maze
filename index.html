@@ -12,6 +12,98 @@
       canvas { 
         display: block; 
       }
+
+      /* Boundary Warning Animations */
+      @keyframes pulseWarning {
+        0%, 100% { 
+          opacity: 0.3;
+          box-shadow: inset 0 0 50px 10px rgba(139, 0, 0, 0.3);
+        }
+        50% { 
+          opacity: 0.6;
+          box-shadow: inset 0 0 80px 20px rgba(139, 0, 0, 0.5);
+        }
+      }
+
+      @keyframes fadeInOut {
+        0% { opacity: 0; }
+        50% { opacity: 1; }
+        100% { opacity: 0; }
+      }
+
+      @keyframes bloodPulse {
+        0% { 
+          opacity: 0.8;
+          filter: brightness(1.5);
+        }
+        100% { 
+          opacity: 0;
+          filter: brightness(1);
+        }
+      }
+
+      @keyframes shakeWarning {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-2px); }
+        75% { transform: translateX(2px); }
+      }
+
+      /* Death screen animation */
+      @keyframes deathFlash {
+        0% { 
+          background: radial-gradient(circle, transparent 20%, #8b0000 100%);
+          opacity: 0;
+        }
+        50% { 
+          opacity: 1;
+        }
+        100% { 
+          background: radial-gradient(circle, transparent 20%, #000000 100%);
+          opacity: 0;
+        }
+      }
+
+      /* Dynamic effect classes for boundary system */
+      .boundary-intensity-effect {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 9998;
+      }
+
+      .warning-shake {
+        animation: shakeWarning 0.1s ease-in-out infinite;
+      }
+
+      .death-flash {
+        animation: deathFlash 2s ease-out forwards;
+      }
+
+      .subtle-warning {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: radial-gradient(circle at center, transparent 70%, rgba(0, 0, 0, 0.3) 100%);
+        pointer-events: none;
+        z-index: 9997;
+      }
+
+      .pull-effect {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(45deg, transparent 80%, rgba(139, 0, 0, 0.1) 100%);
+        pointer-events: none;
+        z-index: 9996;
+      }
+
     </style>
   </head>
   <body>
