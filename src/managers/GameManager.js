@@ -270,6 +270,7 @@ returnToMenu() {
 
     activateFlashlight() {
         this.flashlightActive = true;
+        this.hasFlashlight = true;
         this.visibilityBoost = 3.0;
         console.log('🔦 Flashlight activated! Increased visibility');
     }
@@ -284,6 +285,12 @@ returnToMenu() {
         const emptySlot = this.playerData.inventory.findIndex((slot) => slot === null);
         if (emptySlot !== -1) {
             this.playerData.inventory[emptySlot] = item;
+
+            if (item.type === 'flashlight' && this.hud) {
+                const indicator = document.getElementById('flashlight-indicator');
+                if (indicator) indicator.style.display = 'block';
+            }
+
             return true;
         }
         return false;
