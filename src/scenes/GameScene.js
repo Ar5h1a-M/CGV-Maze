@@ -52,6 +52,10 @@ export class GameScene {
         // ✅ NEW: dedicated group to hold all sky elements (skybox, sun/moon, stars, sky lights)
         this._skyGroup = new THREE.Group();
         this._skyGroup.name = 'SkyLayer';
+
+        // ⏸️ NEW: pause state + UI refs
+        this.paused = false;
+        this.pauseUI = { overlay: null, button: null };
     }
     
     async init(gameManager, uiManager, renderer = null) {
@@ -129,6 +133,10 @@ export class GameScene {
         // 📝 Build note overlay UI + bind inputs
         this._buildNoteUI();
         this._bindNoteInput();
+
+        // ⏸️ NEW: build pause overlay/button + keybind
+        this._buildPauseUI();
+        this._bindPauseInput();
 
         //this.createDebugBoundaries(mazeData);
         this._origBackground = new THREE.Color(0x0a0a0a); // or your default
@@ -718,6 +726,9 @@ export class GameScene {
 // Replace ONLY the update() method in your GameScene.js with this:
 
 update() {
+    // ⏸ Hard pause: skip all updates entirely when paused
+    if (this.paused) return;
+
     const deltaTime = this.clock.getDelta();
     if (this.gameManager?.isPlayerDead) return;
     
@@ -797,6 +808,14 @@ update() {
     }
     if (this.noteUI.prompt) {
         this.noteUI.prompt.style.display = 'none';
+    }
+
+    // ⏸️ Clean up pause UI (doesn't affect game state)
+    if (this.pauseUI.button && document.body.contains(this.pauseUI.button)) {
+        document.body.removeChild(this.pauseUI.button);
+    }
+    if (this.pauseUI.overlay && document.body.contains(this.pauseUI.overlay)) {
+        document.body.removeChild(this.pauseUI.overlay);
     }
     
     // Clear arrays
@@ -932,6 +951,81 @@ update() {
         if (!this.noteUI.overlay) return;
         this.noteUI.overlay.style.display = 'none';
         this.noteUI.isOpen = false;
+    }
+
+    // =========================
+    // ⏸️ Pause helpers (NEW)
+    // =========================
+    _buildPauseUI() {
+        // Overlay
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.inset = '0';
+        overlay.style.background = 'rgba(0,0,0,0.7)';
+        overlay.style.display = 'none';
+        overlay.style.zIndex = '9996';
+        overlay.style.pointerEvents = 'none';
+        overlay.style.backdropFilter = 'blur(1px)';
+
+        const label = document.createElement('div');
+        label.textContent = 'PAUSED';
+        label.style.position = 'absolute';
+        label.style.top = '50%';
+        label.style.left = '50%';
+        label.style.transform = 'translate(-50%, -50%)';
+        label.style.fontSize = '42px';
+        label.style.letterSpacing = '6px';
+        label.style.color = '#e5e5e5';
+        label.style.textShadow = '0 2px 18px rgba(0,0,0,0.8)';
+        overlay.appendChild(label);
+
+        document.body.appendChild(overlay);
+        this.pauseUI.overlay = overlay;
+
+    }
+
+    _bindPauseInput() {
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'p' || e.key === 'P') {
+                this._togglePause();
+            }
+        });
+    }
+
+    _togglePause() {
+        this._setPaused(!this.paused);
+    }
+
+    _setPaused(flag) {
+        this.paused = !!flag;
+
+        // stop/resume time
+        if (this.paused) {
+            if (this.clock && this.clock.running) this.clock.stop();
+        } else {
+            if (this.clock && !this.clock.running) {
+                this.clock.start();
+                this.clock.getDelta(); // clear first large delta
+            }
+        }
+
+        if (this.pauseUI.overlay) {
+            this.pauseUI.overlay.style.display = this.paused ? 'block' : 'none';
+        }
+        if (this.pauseUI.button) {
+            this.pauseUI.button.textContent = this.paused ? 'Resume' : 'Pause';
+        }
+        // Optional: damp ambience slightly while paused (no structural changes)
+        try {
+            if (this._ambience && this._ambience.isPlaying) {
+                const v = this.paused ? 0.15 : 0.35;
+                this._ambience.setVolume(v);
+            }
+        } catch (_) {}
+        // Optional: disable player input if your Player supports it
+        if (this.player && typeof this.player.setInputEnabled === 'function') {
+            this.player.setInputEnabled(!this.paused);
+        }
     }
 
  checkBoundaryViolations() {
