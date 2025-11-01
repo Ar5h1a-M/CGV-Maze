@@ -689,6 +689,8 @@ export class GameScene {
     }
 
 
+// Replace ONLY the update() method in your GameScene.js with this:
+
 update() {
     const deltaTime = this.clock.getDelta();
     if (this.gameManager?.isPlayerDead) return;
@@ -698,8 +700,9 @@ update() {
     if (this.player) {
         this.player.update(deltaTime);
 
-         this.checkBoundaryViolations();
+        this.checkBoundaryViolations();
         
+        // UPDATED: Fog of War with proper discovery tracking for minimap
         if (this.fogOfWar && this.player.mesh) {
             // Get the direction the player is looking
             const playerDirection = new THREE.Vector3();
@@ -707,15 +710,20 @@ update() {
                 this.camera.getWorldDirection(playerDirection);
                 playerDirection.y = 0; // Keep it horizontal for maze navigation
                 playerDirection.normalize();
-                
-                // Debug: Log direction occasionally
-                if (Math.random() < 0.05) {
-                    console.log(`🎯 Camera Direction: (${playerDirection.x.toFixed(2)}, ${playerDirection.z.toFixed(2)})`);
-                }
             }
             
-            const discoveredAreas = this.fogOfWar.update(this.player.mesh.position, playerDirection);
-            if (this.hud) this.hud.updateDiscoveredAreas(discoveredAreas);
+            // Update fog (this modifies fogOfWar.discoveredAreas Set)
+            this.fogOfWar.update(this.player.mesh.position, playerDirection);
+            
+            // NEW: Convert discoveredAreas Set to array of objects for HUD
+            if (this.hud) {
+                const discoveredAreasArray = Array.from(this.fogOfWar.discoveredAreas).map(key => {
+                    const [x, z] = key.split(',').map(Number);
+                    return { x, y: z }; // Note: FogOfWar uses z coordinate, but minimap expects y
+                });
+                
+                this.hud.updateDiscoveredAreas(discoveredAreasArray);
+            }
         }
         
         this.checkItemCollection();
@@ -723,6 +731,7 @@ update() {
         this.checkTrapCollisions();
         this.checkPortalWin();
     }
+    
     // Simple global fog adjustment
     const flashlightActive = !!(this.gameManager && this.gameManager.flashlightActive);
     if (this.scene && this.scene.fog) {
