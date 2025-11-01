@@ -5,7 +5,7 @@ import { MazeGenerator } from '../maze/MazeGenerator.js';
 import { MazeRenderer } from '../maze/MazeRenderer.js';
 import { HUD } from '../ui/HUD.js';
 import { FogOfWar } from '../utils/FogOfWar.js';
-
+import { GameSettings } from '../utils/GameSettings.js';
 // 🔊 Add your ambience file here (e.g. src/audio/ambience_spooky.mp3)
 const AMBIENCE_URL = './src/audio/ambience_spooky.mp3';
 
@@ -30,7 +30,9 @@ export class GameScene {
         this.portal = null;
         this.hasWon = false;
         this.skybox = null;
-
+        this._origMaps = new WeakMap();   // for bump/normal toggle
+        this._skyboxTexture = null;       // keep if you use a CubeTexture skybox
+        this._origBackground = null;      // remember background color
         // --- remember baseline fog so we can expand it with flashlight ---
         this._baseFog = { near: 1, far: 5 };
         // holders for flashlight lights
@@ -46,6 +48,14 @@ export class GameScene {
         // 📝 note-reading UI state
         this.currentNoteTarget = null;
         this.noteUI = { overlay: null, text: null, prompt: null, isOpen: false };
+
+        // ✅ NEW: dedicated group to hold all sky elements (skybox, sun/moon, stars, sky lights)
+        this._skyGroup = new THREE.Group();
+        this._skyGroup.name = 'SkyLayer';
+
+        // ⏸️ NEW: pause state + UI refs
+        this.paused = false;
+        this.pauseUI = { overlay: null, button: null };
     }
     
     async init(gameManager, uiManager, renderer = null) {
@@ -58,17 +68,21 @@ export class GameScene {
         this.gameManager.hasFlashlight = false;
 
         // (Optional but helps light feel brighter with PBR materials)
-            // FIXED: Update deprecated lighting properties
-    if (this.renderer) {
-        this.renderer.useLegacyLights = false; // Modern lighting
-        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 2.0;
-    }
+        // FIXED: Update deprecated lighting properties
+        if (this.renderer) {
+            this.renderer.useLegacyLights = false; // Modern lighting
+            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            this.renderer.toneMappingExposure = 2.0;
+        }
         
         // Create scene
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x0a0a0a);
         this.scene.fog = new THREE.Fog(0x0a0a0a, this._baseFog.near, this._baseFog.far);
+
+        // ✅ mount the sky group before building the sky
+        this.scene.add(this._skyGroup);
+
         await this.setupSkybox();
         
         // Create camera
@@ -120,7 +134,29 @@ export class GameScene {
         this._buildNoteUI();
         this._bindNoteInput();
 
+        // ⏸️ NEW: build pause overlay/button + keybind
+        this._buildPauseUI();
+        this._bindPauseInput();
+
         //this.createDebugBoundaries(mazeData);
+        this._origBackground = new THREE.Color(0x0a0a0a); // or your default
+        // if you already loaded a cubemap, keep its reference in this._skyboxTexture
+
+        // apply current setting values once:
+        this._applyShadows(GameSettings.get('gs_shadows', true));
+        this._applyFog(GameSettings.get('gs_fog', true));
+        this._applyBumpMaps(GameSettings.get('gs_bump', true));
+        this._applyAnisotropy(GameSettings.get('gs_aniso', 4));
+        this._applyResolutionScale(GameSettings.get('gs_resScale', 1));
+        this._applySkybox(GameSettings.get('gs_skybox', true));
+
+        // subscribe to changes:
+        GameSettings.on('gs_shadows',  v => this._applyShadows(v));
+        GameSettings.on('gs_fog',      v => this._applyFog(v));
+        GameSettings.on('gs_bump',     v => this._applyBumpMaps(v));
+        GameSettings.on('gs_aniso',    v => this._applyAnisotropy(v));
+        GameSettings.on('gs_resScale', v => this._applyResolutionScale(v));
+        GameSettings.on('gs_skybox',   v => this._applySkybox(v));
     }
 
     // 🔊 minimal audio helper
@@ -162,16 +198,13 @@ export class GameScene {
     }
 
     async setupSkybox() {
-        // Remove existing skybox if any
-        if (this.skybox) {
-            this.scene.remove(this.skybox);
+        // ✅ Clear previous sky content safely (only inside the sky group)
+        if (this._skyGroup) {
+            while (this._skyGroup.children.length) {
+                this._skyGroup.remove(this._skyGroup.children[0]);
+            }
         }
-
-        // Remove any existing celestial bodies
-        this.scene.children = this.scene.children.filter(child => 
-            !child.isPoints && // Remove stars
-            !(child.isMesh && (child.material?.emissive || child.material?.emissiveIntensity > 0)) // Remove sun/moon
-        );
+        this.skybox = null;
 
         const difficulty = this.gameManager.currentDifficulty;
         
@@ -234,7 +267,7 @@ export class GameScene {
         );
 
         this.skybox = new THREE.Mesh(skyboxGeometry, materials);
-        this.scene.add(this.skybox);
+        this._skyGroup.add(this.skybox);
 
         // Add visible sun
         this.createSun();
@@ -242,11 +275,11 @@ export class GameScene {
         // Add directional light for sun effect
         const sunLight = new THREE.DirectionalLight(0xffa500, 0.8);
         sunLight.position.set(50, 50, -50);
-        this.scene.add(sunLight);
+        this._skyGroup.add(sunLight);
 
         // Add ambient light for evening
         const eveningAmbient = new THREE.AmbientLight(0x333366, 0.4);
-        this.scene.add(eveningAmbient);
+        this._skyGroup.add(eveningAmbient);
 
         console.log('🌅 Evening skybox with visible sun loaded for Easy difficulty');
     }
@@ -273,7 +306,7 @@ export class GameScene {
         );
 
         this.skybox = new THREE.Mesh(skyboxGeometry, materials);
-        this.scene.add(this.skybox);
+        this._skyGroup.add(this.skybox);
 
         // Add visible moon
         this.createMoon();
@@ -284,11 +317,11 @@ export class GameScene {
         // Add directional light for moon effect
         const moonLight = new THREE.DirectionalLight(0xaaaaff, 0.5);
         moonLight.position.set(-30, 40, 30);
-        this.scene.add(moonLight);
+        this._skyGroup.add(moonLight);
 
         // Add ambient light for night
         const nightAmbient = new THREE.AmbientLight(0x222244, 0.3);
-        this.scene.add(nightAmbient);
+        this._skyGroup.add(nightAmbient);
 
         console.log('🌙 Night skybox with moon and stars loaded for Medium difficulty');
     }
@@ -315,7 +348,7 @@ export class GameScene {
         );
 
         this.skybox = new THREE.Mesh(skyboxGeometry, materials);
-        this.scene.add(this.skybox);
+        this._skyGroup.add(this.skybox);
 
         // Add lots of stars for hard difficulty
         this.createStars(1500); // Many more stars for hard mode
@@ -323,11 +356,11 @@ export class GameScene {
         // Very minimal directional light (barely any)
         const starLight = new THREE.DirectionalLight(0x444466, 0.15);
         starLight.position.set(0, 50, 0);
-        this.scene.add(starLight);
+        this._skyGroup.add(starLight);
 
         // Very low ambient light
         const darkAmbient = new THREE.AmbientLight(0x111122, 0.08);
-        this.scene.add(darkAmbient);
+        this._skyGroup.add(darkAmbient);
 
         console.log('🌌 Dark skybox with abundant stars loaded for Hard difficulty');
     }
@@ -345,7 +378,7 @@ export class GameScene {
         const sun = new THREE.Mesh(sunGeometry, sunMaterial);
         // Position in the upper part of the sky, visible from spawn
         sun.position.set(150, 100, 150); 
-        this.scene.add(sun);
+        this._skyGroup.add(sun);
         
         // Add sun glow effect
         const sunGlowGeometry = new THREE.SphereGeometry(35, 32, 32);
@@ -376,7 +409,7 @@ export class GameScene {
         const moon = new THREE.Mesh(moonGeometry, moonMaterial);
         // Position in the upper part of the sky, opposite to sun
         moon.position.set(-150, 100, 150);
-        this.scene.add(moon);
+        this._skyGroup.add(moon);
         
         // Add moon glow effect
         const moonGlowGeometry = new THREE.SphereGeometry(28, 32, 32);
@@ -455,7 +488,7 @@ export class GameScene {
         starsMaterial.vertexColors = true;
 
         const stars = new THREE.Points(starsGeometry, starsMaterial);
-        this.scene.add(stars);
+        this._skyGroup.add(stars);
 
         console.log(`✨ Created ${starCount} stars with enhanced visibility`);
     }
@@ -693,6 +726,9 @@ export class GameScene {
 // Replace ONLY the update() method in your GameScene.js with this:
 
 update() {
+    // ⏸ Hard pause: skip all updates entirely when paused
+    if (this.paused) return;
+
     const deltaTime = this.clock.getDelta();
     if (this.gameManager?.isPlayerDead) return;
     
@@ -772,6 +808,14 @@ update() {
     }
     if (this.noteUI.prompt) {
         this.noteUI.prompt.style.display = 'none';
+    }
+
+    // ⏸️ Clean up pause UI (doesn't affect game state)
+    if (this.pauseUI.button && document.body.contains(this.pauseUI.button)) {
+        document.body.removeChild(this.pauseUI.button);
+    }
+    if (this.pauseUI.overlay && document.body.contains(this.pauseUI.overlay)) {
+        document.body.removeChild(this.pauseUI.overlay);
     }
     
     // Clear arrays
@@ -907,6 +951,81 @@ update() {
         if (!this.noteUI.overlay) return;
         this.noteUI.overlay.style.display = 'none';
         this.noteUI.isOpen = false;
+    }
+
+    // =========================
+    // ⏸️ Pause helpers (NEW)
+    // =========================
+    _buildPauseUI() {
+        // Overlay
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.inset = '0';
+        overlay.style.background = 'rgba(0,0,0,0.7)';
+        overlay.style.display = 'none';
+        overlay.style.zIndex = '9996';
+        overlay.style.pointerEvents = 'none';
+        overlay.style.backdropFilter = 'blur(1px)';
+
+        const label = document.createElement('div');
+        label.textContent = 'PAUSED';
+        label.style.position = 'absolute';
+        label.style.top = '50%';
+        label.style.left = '50%';
+        label.style.transform = 'translate(-50%, -50%)';
+        label.style.fontSize = '42px';
+        label.style.letterSpacing = '6px';
+        label.style.color = '#e5e5e5';
+        label.style.textShadow = '0 2px 18px rgba(0,0,0,0.8)';
+        overlay.appendChild(label);
+
+        document.body.appendChild(overlay);
+        this.pauseUI.overlay = overlay;
+
+    }
+
+    _bindPauseInput() {
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'p' || e.key === 'P') {
+                this._togglePause();
+            }
+        });
+    }
+
+    _togglePause() {
+        this._setPaused(!this.paused);
+    }
+
+    _setPaused(flag) {
+        this.paused = !!flag;
+
+        // stop/resume time
+        if (this.paused) {
+            if (this.clock && this.clock.running) this.clock.stop();
+        } else {
+            if (this.clock && !this.clock.running) {
+                this.clock.start();
+                this.clock.getDelta(); // clear first large delta
+            }
+        }
+
+        if (this.pauseUI.overlay) {
+            this.pauseUI.overlay.style.display = this.paused ? 'block' : 'none';
+        }
+        if (this.pauseUI.button) {
+            this.pauseUI.button.textContent = this.paused ? 'Resume' : 'Pause';
+        }
+        // Optional: damp ambience slightly while paused (no structural changes)
+        try {
+            if (this._ambience && this._ambience.isPlaying) {
+                const v = this.paused ? 0.15 : 0.35;
+                this._ambience.setVolume(v);
+            }
+        } catch (_) {}
+        // Optional: disable player input if your Player supports it
+        if (this.player && typeof this.player.setInputEnabled === 'function') {
+            this.player.setInputEnabled(!this.paused);
+        }
     }
 
  checkBoundaryViolations() {
@@ -1364,4 +1483,60 @@ playWhisperingSounds() {
         this.gameManager.audio.playWhisper();
     }
 }
+_applyShadows(enabled){
+  if (this.renderer) this.renderer.shadowMap.enabled = !!enabled;
+  // also toggle per-light shadow if you have them, e.g., this.dirLight.castShadow = enabled;
+}
+_applyFog(enabled){
+  if (enabled) {
+    if (!this.scene.fog) this.scene.fog = new THREE.Fog(0x0a0a0a, 10, 50);
+  } else {
+    this.scene.fog = null;
+  }
+}
+_applySkybox(enabled){
+  // keep background logic for future CubeTexture use
+  if (enabled && this._skyboxTexture) {
+    this.scene.background = this._skyboxTexture;
+  } else if (!enabled) {
+    this.scene.background = this._origBackground || new THREE.Color(0x0a0a0a);
+  }
+  // ✅ actually toggle mesh-based sky content
+  if (this._skyGroup) this._skyGroup.visible = !!enabled;
+}
+_applyBumpMaps(enabled){
+  this.scene.traverse(obj => {
+    const m = obj.material; if (!m) return;
+    const mats = Array.isArray(m) ? m : [m];
+    mats.forEach(mm => {
+      if (!this._origMaps.has(mm)) {
+        this._origMaps.set(mm, { normalMap: mm.normalMap || null, bumpMap: mm.bumpMap || null });
+      }
+      const orig = this._origMaps.get(mm);
+      mm.normalMap = enabled ? orig.normalMap : null;
+      mm.bumpMap   = enabled ? orig.bumpMap   : null;
+      mm.needsUpdate = true;
+    });
+  });
+}
+_applyAnisotropy(level){
+  const caps = this.renderer?.capabilities;
+  const max = caps?.getMaxAnisotropy ? caps.getMaxAnisotropy() : 16;
+  const aniso = Math.max(1, Math.min(max, Number(level)));
+  this.scene.traverse(obj => {
+    const m = obj.material; if (!m) return;
+    (Array.isArray(m)?m:[m]).forEach(mm=>{
+      const setA = t => { if (t) t.anisotropy = aniso; };
+      setA(mm.map); setA(mm.normalMap); setA(mm.bumpMap);
+      setA(mm.roughnessMap); setA(mm.metalnessMap); setA(mm.emissiveMap);
+    });
+  });
+}
+_applyResolutionScale(scale){
+  if (!this.renderer) return;
+  const s = Math.max(0.5, Math.min(2, Number(scale)));
+  this.renderer.setPixelRatio(s);
+  this.renderer.setSize(window.innerWidth, window.innerHeight, false);
+}
+
 }
