@@ -288,6 +288,7 @@ export class HUD {
                             <li>V → Change Perspective</li>
                             <li>1-5 → Select Inventory Slot</li>
                             <li>F → Toggle Flashlight</li>
+                            <li>P → Toggle Pause</li>
                         </ul>
                     </div>
                 </div>

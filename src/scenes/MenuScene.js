@@ -46,7 +46,7 @@ export class MenuScene {
     // Title
     const title = document.createElement('h1');
     title.setAttribute('data-menu-element', 'title');
-    title.textContent = 'THE MAZE';
+    title.textContent = 'THE MAZE OF SHADOWS';
     title.style.cssText = `
         font-size: 3em;
         margin-bottom: 2em;
@@ -66,14 +66,14 @@ export class MenuScene {
     optionsBtn.textContent = 'OPTIONS';
     optionsBtn.onclick = () => this.gameManager.sceneManager.switchToScene('options');
     
-    // Login Button
-    const loginBtn = document.createElement('button');
-    loginBtn.setAttribute('data-menu-element', 'login-button');
-    loginBtn.textContent = 'LOGIN';
-    loginBtn.onclick = () => this.showLogin();
+    // // Login Button
+    // const loginBtn = document.createElement('button');
+    // loginBtn.setAttribute('data-menu-element', 'login-button');
+    // loginBtn.textContent = 'LOGIN';
+    // loginBtn.onclick = () => this.showLogin();
     
     // Style buttons
-    [startBtn, optionsBtn, loginBtn].forEach(btn => {
+    [startBtn, optionsBtn/*, loginBtn*/].forEach(btn => {
         btn.style.cssText = `
             display: block;
             width: 200px;
@@ -94,7 +94,7 @@ export class MenuScene {
     this.menuContainer.appendChild(title);
     this.menuContainer.appendChild(startBtn);
     this.menuContainer.appendChild(optionsBtn);
-    this.menuContainer.appendChild(loginBtn);
+    //this.menuContainer.appendChild(loginBtn);
     
     document.body.appendChild(this.menuContainer);
     
@@ -195,25 +195,25 @@ export class MenuScene {
     this.menuContainer.appendChild(backBtn);
 }
     
-    showLogin() {
-        // Simple login form - will integrate with Supabase later
-        this.menuContainer.innerHTML = '';
+    // showLogin() {
+    //     // Simple login form - will integrate with Supabase later
+    //     this.menuContainer.innerHTML = '';
         
-        const loginForm = document.createElement('div');
-        loginForm.innerHTML = `
-            <h2>LOGIN</h2>
-            <input type="text" placeholder="Username" id="username" style="margin: 10px; padding: 5px;">
-            <input type="password" placeholder="Password" id="password" style="margin: 10px; padding: 5px;">
-            <br>
-            <button id="loginBtn" style="margin: 10px; padding: 10px 20px;">LOGIN</button>
-            <button id="backBtn" style="margin: 10px; padding: 10px 20px;">BACK</button>
-        `;
+    //     const loginForm = document.createElement('div');
+    //     loginForm.innerHTML = `
+    //         <h2>LOGIN</h2>
+    //         <input type="text" placeholder="Username" id="username" style="margin: 10px; padding: 5px;">
+    //         <input type="password" placeholder="Password" id="password" style="margin: 10px; padding: 5px;">
+    //         <br>
+    //         <button id="loginBtn" style="margin: 10px; padding: 10px 20px;">LOGIN</button>
+    //         <button id="backBtn" style="margin: 10px; padding: 10px 20px;">BACK</button>
+    //     `;
         
-        loginForm.querySelector('#loginBtn').onclick = () => this.handleLogin();
-        loginForm.querySelector('#backBtn').onclick = () => this.createMenuUI();
+    //     loginForm.querySelector('#loginBtn').onclick = () => this.handleLogin();
+    //     loginForm.querySelector('#backBtn').onclick = () => this.createMenuUI();
         
-        this.menuContainer.appendChild(loginForm);
-    }
+    //     this.menuContainer.appendChild(loginForm);
+    // }
     
     handleLogin() {
         // Placeholder for Supabase integration

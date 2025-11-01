@@ -245,44 +245,174 @@ export class GameScene {
         this.scene.add(cameraStartMarker);
     }
 
-    async createEveningSkybox() {
-        // Evening skybox - semi-dark with visible sun
-        const skyboxGeometry = new THREE.BoxGeometry(1000, 1000, 1000);
-        
-        // Create evening colors (deep orange/purple gradient)
-        const eveningColors = [
-            new THREE.Color(0x4a235a), // Top - deep purple
-            new THREE.Color(0x4a235a), // Bottom - deep purple  
-            new THREE.Color(0xe67e22), // Front - orange
-            new THREE.Color(0xe67e22), // Back - orange
-            new THREE.Color(0x8e44ad), // Right - purple
-            new THREE.Color(0x8e44ad)  // Left - purple
-        ];
+async createEveningSkybox() {
+    // Create a large cube for the skybox
+    const skyboxGeometry = new THREE.BoxGeometry(1000, 1000, 1000);
 
-        const materials = eveningColors.map(color => 
-            new THREE.MeshBasicMaterial({ 
-                color: color,
-                side: THREE.BackSide
-            })
+    // Brighter evening sky gradient colors - more visible blues
+    const eveningColors = [
+        new THREE.Color(0x6b8cff), // Top - bright royal blue
+        new THREE.Color(0x8fa3ff), // Bottom - soft light blue
+        new THREE.Color(0x7a95ff), // Front - medium blue
+        new THREE.Color(0x7a95ff), // Back
+        new THREE.Color(0x708aff), // Right
+        new THREE.Color(0x708aff)  // Left
+    ];
+
+    const materials = eveningColors.map(color =>
+        new THREE.MeshBasicMaterial({
+            color,
+            side: THREE.BackSide
+        })
+    );
+
+    this.skybox = new THREE.Mesh(skyboxGeometry, materials);
+    this._skyGroup.add(this.skybox);
+
+    // Add dispersed, greyer clouds
+    this.createEveningClouds();
+
+    // Keep sun and lighting similar but brighter
+    this.createSun();
+
+    // Brighter directional light to illuminate the scene
+    const sunLight = new THREE.DirectionalLight(0xffb347, 1.2); // Increased intensity
+    sunLight.position.set(60, 40, -60);
+    this._skyGroup.add(sunLight);
+
+    // Much brighter ambient light so you can actually see
+    const eveningAmbient = new THREE.AmbientLight(0x4a63c0, 0.8); // Increased intensity and brighter color
+    this._skyGroup.add(eveningAmbient);
+
+    console.log('🌌 Bright evening skybox with realistic, dispersed grey clouds created');
+}
+
+
+createEveningClouds() {
+    const cloudCount = 25;
+    
+    for (let i = 0; i < cloudCount; i++) {
+        // Create a group for each cloud cluster
+        const cloudGroup = new THREE.Group();
+        
+        // Darker gray colors - range from dark to medium gray
+        const baseGrayValue = 0.06 + Math.random() * 0.15; // 0.3 to 0.6 (darker range)
+        
+        // Create multiple spherical parts for a rounder, puffier cloud
+        const partCount = 4 + Math.floor(Math.random() * 4); // 4-7 parts per cloud
+        
+        for (let p = 0; p < partCount; p++) {
+            // Vary the gray value slightly for each part
+            const partGrayValue = baseGrayValue + (Math.random() * 0.08 - 0.04);
+            const cloudMaterial = new THREE.MeshBasicMaterial({
+                color: new THREE.Color(baseGrayValue, baseGrayValue, baseGrayValue),
+                transparent: true,
+                opacity: 0.8 ,
+                fog: false
+            });
+
+            // Use sphere geometry for round clouds
+            const partSize = 8 + Math.random() * 10; // 8-18 unit spheres
+            const cloudPart = new THREE.Mesh(
+                new THREE.SphereGeometry(partSize, 12, 10), // More segments for smoother spheres
+                cloudMaterial
+            );
+            
+            // Position parts close together in a cluster
+            cloudPart.position.set(
+                (Math.random() - 0.5) * 25, // ±12.5 units
+                (Math.random() - 0.5) * 15, // ±7.5 units (flatter)
+                (Math.random() - 0.5) * 25  // ±12.5 units
+            );
+            
+            // Slight random rotation for natural look
+            cloudPart.rotation.x = Math.random() * 0.2;
+            cloudPart.rotation.y = Math.random() * 0.2;
+            cloudPart.rotation.z = Math.random() * 0.2;
+            
+            cloudGroup.add(cloudPart);
+        }
+        
+        // Position the entire cloud cluster in the sky
+        const radius = 450; // Increased radius to ensure full coverage
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos((Math.random() * 2) - 1); // Full sphere coverage (-1 to 1)
+
+        cloudGroup.position.set(
+            radius * Math.sin(phi) * Math.cos(theta),
+            Math.abs(radius * Math.sin(phi) * Math.sin(theta)), // Keep clouds in upper hemisphere
+            radius * Math.cos(phi)
+        );
+        
+
+        // Overall cloud scale
+        const overallScale = 0.8 + Math.random() * 0.6;
+        cloudGroup.scale.set(overallScale, overallScale * 0.6, overallScale); // Still slightly flattened
+
+        this._skyGroup.add(cloudGroup);
+    }
+
+    // Add some larger, more complex cloud formations
+    this.createLargeCloudFormations();
+
+    console.log('☁️ Created round, natural-looking darker clouds');
+}
+
+createLargeCloudFormations() {
+    const largeCloudCount = 8;
+    
+    for (let i = 0; i < largeCloudCount; i++) {
+        const largeCloudGroup = new THREE.Group();
+        
+        // Even darker for large clouds
+        const baseGrayValue = 0.05 + Math.random() * 0.1; // 0.25 to 0.45
+        
+        // More parts for larger, more impressive clouds
+        const partCount = 6 + Math.floor(Math.random() * 6); // 6-11 parts
+        
+        for (let p = 0; p < partCount; p++) {
+            const partGrayValue = baseGrayValue + (Math.random() * 0.07 - 0.04);
+            const cloudMaterial = new THREE.MeshBasicMaterial({
+                color: new THREE.Color(baseGrayValue, baseGrayValue, baseGrayValue),
+                transparent: true,
+                opacity: 0.8, 
+                fog: false
+            });
+
+            const partSize = 12 + Math.random() * 15; // 12-27 unit spheres
+            const cloudPart = new THREE.Mesh(
+                new THREE.SphereGeometry(partSize, 14, 12),
+                cloudMaterial
+            );
+            
+            // Wider spread for larger clouds
+            cloudPart.position.set(
+                (Math.random() - 0.5) * 40,
+                (Math.random() - 0.5) * 20,
+                (Math.random() - 0.5) * 40
+            );
+            
+            largeCloudGroup.add(cloudPart);
+        }
+        
+        // Position large clouds strategically
+        const radius = 420 + Math.random() * 80;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos((Math.random() * 0.85) + 0.1);
+        
+        largeCloudGroup.position.set(
+            radius * Math.sin(phi) * Math.cos(theta),
+            radius * Math.sin(phi) * Math.sin(theta),
+            radius * Math.cos(phi)
         );
 
-        this.skybox = new THREE.Mesh(skyboxGeometry, materials);
-        this._skyGroup.add(this.skybox);
+        const overallScale = 1.0 + Math.random() * 0.8;
+        largeCloudGroup.scale.set(overallScale, overallScale * 0.7, overallScale);
 
-        // Add visible sun
-        this.createSun();
-
-        // Add directional light for sun effect
-        const sunLight = new THREE.DirectionalLight(0xffa500, 0.8);
-        sunLight.position.set(50, 50, -50);
-        this._skyGroup.add(sunLight);
-
-        // Add ambient light for evening
-        const eveningAmbient = new THREE.AmbientLight(0x333366, 0.4);
-        this._skyGroup.add(eveningAmbient);
-
-        console.log('🌅 Evening skybox with visible sun loaded for Easy difficulty');
+        this._skyGroup.add(largeCloudGroup);
     }
+}
+
 
     async createNightSkybox() {
         // Night skybox with visible moon and stars
@@ -377,7 +507,7 @@ export class GameScene {
         
         const sun = new THREE.Mesh(sunGeometry, sunMaterial);
         // Position in the upper part of the sky, visible from spawn
-        sun.position.set(150, 100, 150); 
+        sun.position.set(150, 130, -150); 
         this._skyGroup.add(sun);
         
         // Add sun glow effect
@@ -492,6 +622,17 @@ export class GameScene {
 
         console.log(`✨ Created ${starCount} stars with enhanced visibility`);
     }
+
+    // In your GameScene class
+updateEnemyTextures() {
+    if (this.enemies) {
+        this.enemies.forEach(enemy => {
+            if (enemy.updateTextures) {
+                enemy.updateTextures();
+            }
+        });
+    }
+}
 
     populateGameWorld(mazeData) {
         this.spawnEnemies(mazeData);

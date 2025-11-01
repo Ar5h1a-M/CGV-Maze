@@ -85,6 +85,8 @@ export class Enemy {
         // create group for enemy parts
         const group = new THREE.Group();
         group.name = this.type; // helpful for debugging/counting in console
+
+        const enemyTexturesEnabled = localStorage.getItem('gs_enemytex') !== 'false';
     
         // texture loader (loads from public/textures/enemies/...)
         const textureLoader = new THREE.TextureLoader();
@@ -104,7 +106,7 @@ export class Enemy {
     
         // attempt to load texture from textures/enemies/...
         let enemyTexture = null;
-        if (texPath) {
+        if (texPath&& enemyTexturesEnabled) {
             try {
                 enemyTexture = textureLoader.load(texPath);
                 // correct color space for PBR
