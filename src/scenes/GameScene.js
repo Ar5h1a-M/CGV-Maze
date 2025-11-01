@@ -7,7 +7,7 @@ import { HUD } from '../ui/HUD.js';
 import { FogOfWar } from '../utils/FogOfWar.js';
 
 // 🔊 Add your ambience file here (e.g. src/audio/ambience_spooky.mp3)
-import AMBIENCE_URL from '../audio/ambience_spooky.mp3';
+const AMBIENCE_URL = './src/audio/ambience_spooky.mp3';
 
 export class GameScene {
     constructor() {
@@ -58,11 +58,12 @@ export class GameScene {
         this.gameManager.hasFlashlight = false;
 
         // (Optional but helps light feel brighter with PBR materials)
-        if (this.renderer) {
-            this.renderer.physicallyCorrectLights = true;
-            // a tiny boost makes standard materials read better in dark scenes
-            this.renderer.toneMappingExposure = 1.2;
-        }
+            // FIXED: Update deprecated lighting properties
+    if (this.renderer) {
+        this.renderer.useLegacyLights = false; // Modern lighting
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 2.0;
+    }
         
         // Create scene
         this.scene = new THREE.Scene();

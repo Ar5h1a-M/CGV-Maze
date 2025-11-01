@@ -107,6 +107,14 @@
     </style>
   </head>
   <body>
-    <script type="module" src="/src/main.js"></script>
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js",
+        "@dimforge/rapier3d-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.12.0/+esm"
+      }
+    }
+    </script>
+    <script type="module" src="src/main.js"></script>
   </body>
 </html>
