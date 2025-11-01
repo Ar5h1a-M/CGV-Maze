@@ -55,13 +55,23 @@ export class LoreManager {
 
   showIntro() {
     const text =
-`You wake in darkness. Cold floor. Distant whispers.
-The walls shift when you look away.
-You don’t remember how you got here—only that you’ve been here before.
+    `You wake in darkness. Cold floor. Distant whispers.
+    The walls shift when you look away.
+    You don’t remember how you got here-only that you’ve been here before.
 
-Find the light.
-Escape the maze.
-Before it remembers you.`;
+    Find the light.
+    Escape the maze.
+    Before it remembers you.`;
+
+    this._show(text);
+  }
+
+   showhelp() {
+    const text =
+    `Use WASD or arrow keys to move.
+     Press esc to gain control of th mouse.
+     Click on the game screen to regain control of your character.
+     press ? for more help`;
 
     this._show(text);
   }
