@@ -59,36 +59,117 @@ export class Player {
         this._tmpDir = new THREE.Vector3();
     }
 
-    spawn() {
-        // Container
-        this.mesh = new THREE.Group();
-        this.mesh.name = 'player';
+   spawn(mazeData = null) {
+    // Container
+    this.mesh = new THREE.Group();
+    this.mesh.name = 'player';
 
-        // Visuals
-        this.createPlayerVisuals();
+    // Visuals
+    this.createPlayerVisuals();
 
-        // Start position
-        this.mesh.position.set(0, 0.3, 0);
-        this.scene.add(this.mesh);
-
-        // Physics
-        const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
-            .setTranslation(0, 0.3, 0)
-            .lockRotations();
-        this.body = this.world.createRigidBody(bodyDesc);
-        const colliderDesc = RAPIER.ColliderDesc.capsule(0.15, 0.2);
-        this.collider = this.world.createCollider(colliderDesc, this.body);
-
-        // Camera/controller
-        this.camera = this.scene.camera;
-        if (this.camera && this.renderer) {
-            this.cameraController = new CameraController(this.camera, this.renderer.domElement, this.scene);
-            this.cameraController.setCameraSwitchCallback(this.onCameraModeChanged.bind(this));
-            this._applyVisibilityForCameraMode();
-        } else {
-            console.error('Camera or renderer not available for player!');
+    // Get safe spawn position
+    let spawnPosition = new THREE.Vector3(0, 0.3, 0);
+    
+    if (mazeData && mazeData.start) {
+        // Use the maze's designated start position
+        spawnPosition.set(
+            mazeData.start.x - mazeData.size/2,
+            0.3,
+            mazeData.start.z - mazeData.size/2
+        );
+        
+        // Double-check this is a valid position (not inside a wall)
+        const gridX = Math.floor(mazeData.start.x);
+        const gridZ = Math.floor(mazeData.start.z);
+        
+        if (mazeData.grid && mazeData.grid[gridZ] && mazeData.grid[gridZ][gridX] === 1) {
+            console.warn('⚠️ Start position is inside a wall! Finding safe position...');
+            // Emergency fallback: find nearest empty cell
+            spawnPosition = this.findSafeSpawnPosition(mazeData);
         }
     }
+
+    this.mesh.position.copy(spawnPosition);
+    this.scene.add(this.mesh);
+
+    // Physics - use the same position
+    const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(spawnPosition.x, spawnPosition.y, spawnPosition.z)
+        .lockRotations();
+    this.body = this.world.createRigidBody(bodyDesc);
+    const colliderDesc = RAPIER.ColliderDesc.capsule(0.15, 0.2);
+    this.collider = this.world.createCollider(colliderDesc, this.body);
+
+    // Camera/controller
+    this.camera = this.scene.camera;
+    if (this.camera && this.renderer) {
+        this.cameraController = new CameraController(this.camera, this.renderer.domElement, this.scene);
+        this.cameraController.setCameraSwitchCallback(this.onCameraModeChanged.bind(this));
+        this._applyVisibilityForCameraMode();
+    } else {
+        console.error('Camera or renderer not available for player!');
+    }
+}
+
+// Add this helper method to find a safe spawn position
+findSafeSpawnPosition(mazeData) {
+    console.log('🔍 Searching for safe spawn position...');
+    
+    // Check the designated start position first
+    const startX = mazeData.start.x;
+    const startZ = mazeData.start.z;
+    
+    if (mazeData.grid[startZ] && mazeData.grid[startZ][startX] === 0) {
+        return new THREE.Vector3(
+            startX - mazeData.size/2,
+            0.3,
+            startZ - mazeData.size/2
+        );
+    }
+    
+    // If start is blocked, search in expanding circles around the start
+    const directions = [
+        [0, 1], [1, 0], [0, -1], [-1, 0],  // adjacent cells
+        [1, 1], [1, -1], [-1, 1], [-1, -1] // diagonal cells
+    ];
+    
+    for (let radius = 1; radius <= 3; radius++) {
+        for (const [dx, dz] of directions) {
+            const checkX = startX + (dx * radius);
+            const checkZ = startZ + (dz * radius);
+            
+            if (checkX >= 0 && checkX < mazeData.size && 
+                checkZ >= 0 && checkZ < mazeData.size &&
+                mazeData.grid[checkZ] && mazeData.grid[checkZ][checkX] === 0) {
+                
+                console.log(`✅ Found safe spawn at (${checkX}, ${checkZ})`);
+                return new THREE.Vector3(
+                    checkX - mazeData.size/2,
+                    0.3,
+                    checkZ - mazeData.size/2
+                );
+            }
+        }
+    }
+    
+    // Last resort: find any empty cell
+    for (let z = 0; z < mazeData.size; z++) {
+        for (let x = 0; x < mazeData.size; x++) {
+            if (mazeData.grid[z] && mazeData.grid[z][x] === 0) {
+                console.log(`🚨 Emergency spawn at (${x}, ${z})`);
+                return new THREE.Vector3(
+                    x - mazeData.size/2,
+                    0.3,
+                    z - mazeData.size/2
+                );
+            }
+        }
+    }
+    
+    // Absolute fallback
+    console.error('🚨 No safe spawn position found! Using default.');
+    return new THREE.Vector3(0, 0.3, 0);
+}
 
     createPlayerVisuals() {
         const deg = (d) => d * (Math.PI / 180);

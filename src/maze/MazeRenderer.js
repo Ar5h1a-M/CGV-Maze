@@ -149,7 +149,7 @@ createMazeBoundaries(mazeData) {
 }
 
 createWarningZone(mazeData) {
-    const warningDistance = 4; // 2 units beyond maze edge
+    const warningDistance = 1; // 2 units beyond maze edge
     const zoneSize = mazeData.size + warningDistance * 2;
     
     // Create subtle ground texture change for warning zone
