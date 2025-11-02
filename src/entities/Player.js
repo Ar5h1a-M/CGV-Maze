@@ -59,7 +59,7 @@ export class Player {
         this._tmpDir = new THREE.Vector3();
     }
 
-   spawn(mazeData = null) {
+spawn(mazeData = null) {
     // Container
     this.mesh = new THREE.Group();
     this.mesh.name = 'player';
@@ -67,27 +67,8 @@ export class Player {
     // Visuals
     this.createPlayerVisuals();
 
-    // Get safe spawn position
-    let spawnPosition = new THREE.Vector3(0, 0.3, 0);
-    
-    if (mazeData && mazeData.start) {
-        // Use the maze's designated start position
-        spawnPosition.set(
-            mazeData.start.x - mazeData.size/2,
-            0.3,
-            mazeData.start.z - mazeData.size/2
-        );
-        
-        // Double-check this is a valid position (not inside a wall)
-        const gridX = Math.floor(mazeData.start.x);
-        const gridZ = Math.floor(mazeData.start.z);
-        
-        if (mazeData.grid && mazeData.grid[gridZ] && mazeData.grid[gridZ][gridX] === 1) {
-            console.warn('⚠️ Start position is inside a wall! Finding safe position...');
-            // Emergency fallback: find nearest empty cell
-            spawnPosition = this.findSafeSpawnPosition(mazeData);
-        }
-    }
+    // Get safe spawn position - ALWAYS use random safe position
+    let spawnPosition = this.findRandomSafeSpawnPosition(mazeData);
 
     this.mesh.position.copy(spawnPosition);
     this.scene.add(this.mesh);
@@ -109,6 +90,125 @@ export class Player {
     } else {
         console.error('Camera or renderer not available for player!');
     }
+}
+
+// Find a completely random safe spawn position
+// Find a completely random safe spawn position - SIMPLIFIED VERSION
+findRandomSafeSpawnPosition(mazeData) {
+    if (!mazeData || !mazeData.grid) {
+        console.warn('No maze data provided, using default spawn');
+        return new THREE.Vector3(0, 0.3, 0);
+    }
+
+    console.log('🎲 Finding random safe spawn position...');
+    
+    // Collect all empty cells
+    const emptyCells = [];
+    
+    for (let z = 0; z < mazeData.grid.length; z++) {
+        for (let x = 0; x < mazeData.grid[z].length; x++) {
+            // Simply check if this is an empty cell (0)
+            if (mazeData.grid[z][x] === 0) {
+                emptyCells.push({ x, z });
+            }
+        }
+    }
+
+    console.log(`📊 Found ${emptyCells.length} empty cells in maze`);
+
+    if (emptyCells.length === 0) {
+        console.error('🚨 No empty cells found in maze! Using emergency spawn.');
+        // Let's try to debug why no empty cells are found
+        this.debugMazeGrid(mazeData);
+        return new THREE.Vector3(0, 0.3, 0);
+    }
+
+    // Pick a random empty cell
+    const randomCell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+    
+    const spawnPosition = new THREE.Vector3(
+        randomCell.x - mazeData.size/2,
+        0.3,
+        randomCell.z - mazeData.size/2
+    );
+
+    console.log(`✅ Random spawn at grid (${randomCell.x}, ${randomCell.z}) -> world (${spawnPosition.x.toFixed(2)}, ${spawnPosition.z.toFixed(2)})`);
+    
+    return spawnPosition;
+}
+
+// Add this debug method to understand the maze structure
+debugMazeGrid(mazeData) {
+    console.log('🔍 Maze Grid Debug:');
+    console.log('Grid dimensions:', mazeData.grid.length, 'x', mazeData.grid[0]?.length);
+    console.log('Start position:', mazeData.start);
+    console.log('End position:', mazeData.end);
+    
+    // Log a small section of the grid
+    const sampleSize = Math.min(5, mazeData.grid.length);
+    console.log('First few rows:');
+    for (let z = 0; z < sampleSize; z++) {
+        const row = [];
+        for (let x = 0; x < Math.min(5, mazeData.grid[z].length); x++) {
+            row.push(mazeData.grid[z][x]);
+        }
+        console.log(`Row ${z}:`, row);
+    }
+    
+    // Count cell types
+    let zeros = 0, ones = 0, others = 0;
+    for (let z = 0; z < mazeData.grid.length; z++) {
+        for (let x = 0; x < mazeData.grid[z].length; x++) {
+            const val = mazeData.grid[z][x];
+            if (val === 0) zeros++;
+            else if (val === 1) ones++;
+            else others++;
+        }
+    }
+    console.log(`Cell counts: 0=${zeros}, 1=${ones}, other=${others}`);
+}
+
+// Optional: Check if position has safe distance from walls
+isSafeDistanceFromWalls(mazeData, x, z, minDistance = 1) {
+    for (let dz = -minDistance; dz <= minDistance; dz++) {
+        for (let dx = -minDistance; dx <= minDistance; dx++) {
+            const checkX = x + dx;
+            const checkZ = z + dz;
+            
+            // If out of bounds, consider it safe (edge of maze)
+            if (checkX < 0 || checkX >= mazeData.size || checkZ < 0 || checkZ >= mazeData.size) {
+                continue;
+            }
+            
+            // If there's a wall within the safe distance, this spot is not ideal
+            if (mazeData.grid[checkZ][checkX] === 1) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+// Keep the emergency fallback method just in case
+findSafeSpawnPosition(mazeData) {
+    console.log('🔍 Emergency: Finding any safe spawn position...');
+    
+    // Simple approach: find first empty cell
+    for (let z = 0; z < mazeData.grid.length; z++) {
+        for (let x = 0; x < mazeData.grid[z].length; x++) {
+            if (mazeData.grid[z][x] === 0) {
+                console.log(`🚨 Emergency spawn at (${x}, ${z})`);
+                return new THREE.Vector3(
+                    x - mazeData.size/2,
+                    0.3,
+                    z - mazeData.size/2
+                );
+            }
+        }
+    }
+    
+    console.error('🚨 No safe spawn position found! Using default.');
+    return new THREE.Vector3(0, 0.3, 0);
 }
 
 // Add this helper method to find a safe spawn position

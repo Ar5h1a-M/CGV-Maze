@@ -119,7 +119,7 @@ export class GameScene {
         
         // Create player
         this.player = new Player(this.scene, this.world, this.gameManager, this.renderer);
-        this.player.spawn();
+        this.player.spawn(this.mazeData);
         
         // Setup HUD
         this.hud = new HUD(this.gameManager);
