@@ -49,7 +49,7 @@ async switchToScene(sceneName) {
             this.scenes.game = new GameScene();
             console.log('✅ GameScene loaded successfully');
         } catch (error) {
-            console.error('❌ Failed to load GameScene:', error);
+            console.error('❌ Failed to load GameScene (if you are on mobile, please witch to pc/laptop):', error);
             
             // Try alternative method with full URL
             try {
