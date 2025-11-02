@@ -338,7 +338,7 @@ export class HUD {
         `;
         menuBtn.onmouseover = () => menuBtn.style.background = 'rgba(169, 0, 0, 0.9)';
         menuBtn.onmouseout = () => menuBtn.style.background = 'rgba(139, 0, 0, 0.8)';
-        menuBtn.onclick = () => this.returnToMenu();
+        menuBtn.onclick = () => location.reload();
         
         this.container.appendChild(menuBtn);
     }

@@ -182,13 +182,13 @@ showGameOverScreen(message, result) {
 
     // Add event listener for the return button
     document.getElementById('return-to-menu').onclick = () => {
-        this.returnToMenu();
+        location.reload();
     };
 
     // Auto-return after 5 seconds if no interaction
     setTimeout(() => {
         if (document.getElementById('game-over-screen')) {
-            this.returnToMenu();
+            location.reload();
         }
     }, 10000);
 }
