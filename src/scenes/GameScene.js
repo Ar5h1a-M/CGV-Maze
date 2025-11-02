@@ -5,9 +5,9 @@ import { MazeGenerator } from '../maze/MazeGenerator.js';
 import { MazeRenderer } from '../maze/MazeRenderer.js';
 import { HUD } from '../ui/HUD.js';
 import { FogOfWar } from '../utils/FogOfWar.js';
-
+import { GameSettings } from '../utils/GameSettings.js';
 // 🔊 Add your ambience file here (e.g. src/audio/ambience_spooky.mp3)
-import AMBIENCE_URL from '../audio/ambience_spooky.mp3';
+const AMBIENCE_URL = './src/audio/ambience_spooky.mp3';
 
 export class GameScene {
     constructor() {
@@ -30,7 +30,9 @@ export class GameScene {
         this.portal = null;
         this.hasWon = false;
         this.skybox = null;
-
+        this._origMaps = new WeakMap();   // for bump/normal toggle
+        this._skyboxTexture = null;       // keep if you use a CubeTexture skybox
+        this._origBackground = null;      // remember background color
         // --- remember baseline fog so we can expand it with flashlight ---
         this._baseFog = { near: 1, far: 5 };
         // holders for flashlight lights
@@ -46,6 +48,14 @@ export class GameScene {
         // 📝 note-reading UI state
         this.currentNoteTarget = null;
         this.noteUI = { overlay: null, text: null, prompt: null, isOpen: false };
+
+        // ✅ NEW: dedicated group to hold all sky elements (skybox, sun/moon, stars, sky lights)
+        this._skyGroup = new THREE.Group();
+        this._skyGroup.name = 'SkyLayer';
+
+        // ⏸️ NEW: pause state + UI refs
+        this.paused = false;
+        this.pauseUI = { overlay: null, button: null };
     }
     
     async init(gameManager, uiManager, renderer = null) {
@@ -58,16 +68,21 @@ export class GameScene {
         this.gameManager.hasFlashlight = false;
 
         // (Optional but helps light feel brighter with PBR materials)
+        // FIXED: Update deprecated lighting properties
         if (this.renderer) {
-            this.renderer.physicallyCorrectLights = true;
-            // a tiny boost makes standard materials read better in dark scenes
-            this.renderer.toneMappingExposure = 1.2;
+            this.renderer.useLegacyLights = false; // Modern lighting
+            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            this.renderer.toneMappingExposure = 2.0;
         }
         
         // Create scene
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x0a0a0a);
         this.scene.fog = new THREE.Fog(0x0a0a0a, this._baseFog.near, this._baseFog.far);
+
+        // ✅ mount the sky group before building the sky
+        this.scene.add(this._skyGroup);
+
         await this.setupSkybox();
         
         // Create camera
@@ -119,7 +134,29 @@ export class GameScene {
         this._buildNoteUI();
         this._bindNoteInput();
 
+        // ⏸️ NEW: build pause overlay/button + keybind
+        this._buildPauseUI();
+        this._bindPauseInput();
+
         //this.createDebugBoundaries(mazeData);
+        this._origBackground = new THREE.Color(0x0a0a0a); // or your default
+        // if you already loaded a cubemap, keep its reference in this._skyboxTexture
+
+        // apply current setting values once:
+        this._applyShadows(GameSettings.get('gs_shadows', true));
+        this._applyFog(GameSettings.get('gs_fog', true));
+        this._applyBumpMaps(GameSettings.get('gs_bump', true));
+        this._applyAnisotropy(GameSettings.get('gs_aniso', 4));
+        this._applyResolutionScale(GameSettings.get('gs_resScale', 1));
+        this._applySkybox(GameSettings.get('gs_skybox', true));
+
+        // subscribe to changes:
+        GameSettings.on('gs_shadows',  v => this._applyShadows(v));
+        GameSettings.on('gs_fog',      v => this._applyFog(v));
+        GameSettings.on('gs_bump',     v => this._applyBumpMaps(v));
+        GameSettings.on('gs_aniso',    v => this._applyAnisotropy(v));
+        GameSettings.on('gs_resScale', v => this._applyResolutionScale(v));
+        GameSettings.on('gs_skybox',   v => this._applySkybox(v));
     }
 
     // 🔊 minimal audio helper
@@ -161,16 +198,13 @@ export class GameScene {
     }
 
     async setupSkybox() {
-        // Remove existing skybox if any
-        if (this.skybox) {
-            this.scene.remove(this.skybox);
+        // ✅ Clear previous sky content safely (only inside the sky group)
+        if (this._skyGroup) {
+            while (this._skyGroup.children.length) {
+                this._skyGroup.remove(this._skyGroup.children[0]);
+            }
         }
-
-        // Remove any existing celestial bodies
-        this.scene.children = this.scene.children.filter(child => 
-            !child.isPoints && // Remove stars
-            !(child.isMesh && (child.material?.emissive || child.material?.emissiveIntensity > 0)) // Remove sun/moon
-        );
+        this.skybox = null;
 
         const difficulty = this.gameManager.currentDifficulty;
         
@@ -211,44 +245,174 @@ export class GameScene {
         this.scene.add(cameraStartMarker);
     }
 
-    async createEveningSkybox() {
-        // Evening skybox - semi-dark with visible sun
-        const skyboxGeometry = new THREE.BoxGeometry(1000, 1000, 1000);
-        
-        // Create evening colors (deep orange/purple gradient)
-        const eveningColors = [
-            new THREE.Color(0x4a235a), // Top - deep purple
-            new THREE.Color(0x4a235a), // Bottom - deep purple  
-            new THREE.Color(0xe67e22), // Front - orange
-            new THREE.Color(0xe67e22), // Back - orange
-            new THREE.Color(0x8e44ad), // Right - purple
-            new THREE.Color(0x8e44ad)  // Left - purple
-        ];
+async createEveningSkybox() {
+    // Create a large cube for the skybox
+    const skyboxGeometry = new THREE.BoxGeometry(1000, 1000, 1000);
 
-        const materials = eveningColors.map(color => 
-            new THREE.MeshBasicMaterial({ 
-                color: color,
-                side: THREE.BackSide
-            })
+    // Brighter evening sky gradient colors - more visible blues
+    const eveningColors = [
+        new THREE.Color(0x6b8cff), // Top - bright royal blue
+        new THREE.Color(0x8fa3ff), // Bottom - soft light blue
+        new THREE.Color(0x7a95ff), // Front - medium blue
+        new THREE.Color(0x7a95ff), // Back
+        new THREE.Color(0x708aff), // Right
+        new THREE.Color(0x708aff)  // Left
+    ];
+
+    const materials = eveningColors.map(color =>
+        new THREE.MeshBasicMaterial({
+            color,
+            side: THREE.BackSide
+        })
+    );
+
+    this.skybox = new THREE.Mesh(skyboxGeometry, materials);
+    this._skyGroup.add(this.skybox);
+
+    // Add dispersed, greyer clouds
+    this.createEveningClouds();
+
+    // Keep sun and lighting similar but brighter
+    this.createSun();
+
+    // Brighter directional light to illuminate the scene
+    const sunLight = new THREE.DirectionalLight(0xffb347, 1.2); // Increased intensity
+    sunLight.position.set(60, 40, -60);
+    this._skyGroup.add(sunLight);
+
+    // Much brighter ambient light so you can actually see
+    const eveningAmbient = new THREE.AmbientLight(0x4a63c0, 0.8); // Increased intensity and brighter color
+    this._skyGroup.add(eveningAmbient);
+
+    console.log('🌌 Bright evening skybox with realistic, dispersed grey clouds created');
+}
+
+
+createEveningClouds() {
+    const cloudCount = 25;
+    
+    for (let i = 0; i < cloudCount; i++) {
+        // Create a group for each cloud cluster
+        const cloudGroup = new THREE.Group();
+        
+        // Darker gray colors - range from dark to medium gray
+        const baseGrayValue = 0.06 + Math.random() * 0.15; // 0.3 to 0.6 (darker range)
+        
+        // Create multiple spherical parts for a rounder, puffier cloud
+        const partCount = 4 + Math.floor(Math.random() * 4); // 4-7 parts per cloud
+        
+        for (let p = 0; p < partCount; p++) {
+            // Vary the gray value slightly for each part
+            const partGrayValue = baseGrayValue + (Math.random() * 0.08 - 0.04);
+            const cloudMaterial = new THREE.MeshBasicMaterial({
+                color: new THREE.Color(baseGrayValue, baseGrayValue, baseGrayValue),
+                transparent: true,
+                opacity: 0.8 ,
+                fog: false
+            });
+
+            // Use sphere geometry for round clouds
+            const partSize = 8 + Math.random() * 10; // 8-18 unit spheres
+            const cloudPart = new THREE.Mesh(
+                new THREE.SphereGeometry(partSize, 12, 10), // More segments for smoother spheres
+                cloudMaterial
+            );
+            
+            // Position parts close together in a cluster
+            cloudPart.position.set(
+                (Math.random() - 0.5) * 25, // ±12.5 units
+                (Math.random() - 0.5) * 15, // ±7.5 units (flatter)
+                (Math.random() - 0.5) * 25  // ±12.5 units
+            );
+            
+            // Slight random rotation for natural look
+            cloudPart.rotation.x = Math.random() * 0.2;
+            cloudPart.rotation.y = Math.random() * 0.2;
+            cloudPart.rotation.z = Math.random() * 0.2;
+            
+            cloudGroup.add(cloudPart);
+        }
+        
+        // Position the entire cloud cluster in the sky
+        const radius = 450; // Increased radius to ensure full coverage
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos((Math.random() * 2) - 1); // Full sphere coverage (-1 to 1)
+
+        cloudGroup.position.set(
+            radius * Math.sin(phi) * Math.cos(theta),
+            Math.abs(radius * Math.sin(phi) * Math.sin(theta)), // Keep clouds in upper hemisphere
+            radius * Math.cos(phi)
+        );
+        
+
+        // Overall cloud scale
+        const overallScale = 0.8 + Math.random() * 0.6;
+        cloudGroup.scale.set(overallScale, overallScale * 0.6, overallScale); // Still slightly flattened
+
+        this._skyGroup.add(cloudGroup);
+    }
+
+    // Add some larger, more complex cloud formations
+    this.createLargeCloudFormations();
+
+    console.log('☁️ Created round, natural-looking darker clouds');
+}
+
+createLargeCloudFormations() {
+    const largeCloudCount = 8;
+    
+    for (let i = 0; i < largeCloudCount; i++) {
+        const largeCloudGroup = new THREE.Group();
+        
+        // Even darker for large clouds
+        const baseGrayValue = 0.05 + Math.random() * 0.1; // 0.25 to 0.45
+        
+        // More parts for larger, more impressive clouds
+        const partCount = 6 + Math.floor(Math.random() * 6); // 6-11 parts
+        
+        for (let p = 0; p < partCount; p++) {
+            const partGrayValue = baseGrayValue + (Math.random() * 0.07 - 0.04);
+            const cloudMaterial = new THREE.MeshBasicMaterial({
+                color: new THREE.Color(baseGrayValue, baseGrayValue, baseGrayValue),
+                transparent: true,
+                opacity: 0.8, 
+                fog: false
+            });
+
+            const partSize = 12 + Math.random() * 15; // 12-27 unit spheres
+            const cloudPart = new THREE.Mesh(
+                new THREE.SphereGeometry(partSize, 14, 12),
+                cloudMaterial
+            );
+            
+            // Wider spread for larger clouds
+            cloudPart.position.set(
+                (Math.random() - 0.5) * 40,
+                (Math.random() - 0.5) * 20,
+                (Math.random() - 0.5) * 40
+            );
+            
+            largeCloudGroup.add(cloudPart);
+        }
+        
+        // Position large clouds strategically
+        const radius = 420 + Math.random() * 80;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos((Math.random() * 0.85) + 0.1);
+        
+        largeCloudGroup.position.set(
+            radius * Math.sin(phi) * Math.cos(theta),
+            radius * Math.sin(phi) * Math.sin(theta),
+            radius * Math.cos(phi)
         );
 
-        this.skybox = new THREE.Mesh(skyboxGeometry, materials);
-        this.scene.add(this.skybox);
+        const overallScale = 1.0 + Math.random() * 0.8;
+        largeCloudGroup.scale.set(overallScale, overallScale * 0.7, overallScale);
 
-        // Add visible sun
-        this.createSun();
-
-        // Add directional light for sun effect
-        const sunLight = new THREE.DirectionalLight(0xffa500, 0.8);
-        sunLight.position.set(50, 50, -50);
-        this.scene.add(sunLight);
-
-        // Add ambient light for evening
-        const eveningAmbient = new THREE.AmbientLight(0x333366, 0.4);
-        this.scene.add(eveningAmbient);
-
-        console.log('🌅 Evening skybox with visible sun loaded for Easy difficulty');
+        this._skyGroup.add(largeCloudGroup);
     }
+}
+
 
     async createNightSkybox() {
         // Night skybox with visible moon and stars
@@ -272,7 +436,7 @@ export class GameScene {
         );
 
         this.skybox = new THREE.Mesh(skyboxGeometry, materials);
-        this.scene.add(this.skybox);
+        this._skyGroup.add(this.skybox);
 
         // Add visible moon
         this.createMoon();
@@ -283,11 +447,11 @@ export class GameScene {
         // Add directional light for moon effect
         const moonLight = new THREE.DirectionalLight(0xaaaaff, 0.5);
         moonLight.position.set(-30, 40, 30);
-        this.scene.add(moonLight);
+        this._skyGroup.add(moonLight);
 
         // Add ambient light for night
         const nightAmbient = new THREE.AmbientLight(0x222244, 0.3);
-        this.scene.add(nightAmbient);
+        this._skyGroup.add(nightAmbient);
 
         console.log('🌙 Night skybox with moon and stars loaded for Medium difficulty');
     }
@@ -314,7 +478,7 @@ export class GameScene {
         );
 
         this.skybox = new THREE.Mesh(skyboxGeometry, materials);
-        this.scene.add(this.skybox);
+        this._skyGroup.add(this.skybox);
 
         // Add lots of stars for hard difficulty
         this.createStars(1500); // Many more stars for hard mode
@@ -322,11 +486,11 @@ export class GameScene {
         // Very minimal directional light (barely any)
         const starLight = new THREE.DirectionalLight(0x444466, 0.15);
         starLight.position.set(0, 50, 0);
-        this.scene.add(starLight);
+        this._skyGroup.add(starLight);
 
         // Very low ambient light
         const darkAmbient = new THREE.AmbientLight(0x111122, 0.08);
-        this.scene.add(darkAmbient);
+        this._skyGroup.add(darkAmbient);
 
         console.log('🌌 Dark skybox with abundant stars loaded for Hard difficulty');
     }
@@ -343,8 +507,8 @@ export class GameScene {
         
         const sun = new THREE.Mesh(sunGeometry, sunMaterial);
         // Position in the upper part of the sky, visible from spawn
-        sun.position.set(150, 100, 150); 
-        this.scene.add(sun);
+        sun.position.set(150, 130, -150); 
+        this._skyGroup.add(sun);
         
         // Add sun glow effect
         const sunGlowGeometry = new THREE.SphereGeometry(35, 32, 32);
@@ -375,7 +539,7 @@ export class GameScene {
         const moon = new THREE.Mesh(moonGeometry, moonMaterial);
         // Position in the upper part of the sky, opposite to sun
         moon.position.set(-150, 100, 150);
-        this.scene.add(moon);
+        this._skyGroup.add(moon);
         
         // Add moon glow effect
         const moonGlowGeometry = new THREE.SphereGeometry(28, 32, 32);
@@ -454,10 +618,21 @@ export class GameScene {
         starsMaterial.vertexColors = true;
 
         const stars = new THREE.Points(starsGeometry, starsMaterial);
-        this.scene.add(stars);
+        this._skyGroup.add(stars);
 
         console.log(`✨ Created ${starCount} stars with enhanced visibility`);
     }
+
+    // In your GameScene class
+updateEnemyTextures() {
+    if (this.enemies) {
+        this.enemies.forEach(enemy => {
+            if (enemy.updateTextures) {
+                enemy.updateTextures();
+            }
+        });
+    }
+}
 
     populateGameWorld(mazeData) {
         this.spawnEnemies(mazeData);
@@ -689,7 +864,12 @@ export class GameScene {
     }
 
 
+// Replace ONLY the update() method in your GameScene.js with this:
+
 update() {
+    // ⏸ Hard pause: skip all updates entirely when paused
+    if (this.paused) return;
+
     const deltaTime = this.clock.getDelta();
     if (this.gameManager?.isPlayerDead) return;
     
@@ -698,8 +878,9 @@ update() {
     if (this.player) {
         this.player.update(deltaTime);
 
-         this.checkBoundaryViolations();
+        this.checkBoundaryViolations();
         
+        // UPDATED: Fog of War with proper discovery tracking for minimap
         if (this.fogOfWar && this.player.mesh) {
             // Get the direction the player is looking
             const playerDirection = new THREE.Vector3();
@@ -707,15 +888,20 @@ update() {
                 this.camera.getWorldDirection(playerDirection);
                 playerDirection.y = 0; // Keep it horizontal for maze navigation
                 playerDirection.normalize();
-                
-                // Debug: Log direction occasionally
-                if (Math.random() < 0.05) {
-                    console.log(`🎯 Camera Direction: (${playerDirection.x.toFixed(2)}, ${playerDirection.z.toFixed(2)})`);
-                }
             }
             
-            const discoveredAreas = this.fogOfWar.update(this.player.mesh.position, playerDirection);
-            if (this.hud) this.hud.updateDiscoveredAreas(discoveredAreas);
+            // Update fog (this modifies fogOfWar.discoveredAreas Set)
+            this.fogOfWar.update(this.player.mesh.position, playerDirection);
+            
+            // NEW: Convert discoveredAreas Set to array of objects for HUD
+            if (this.hud) {
+                const discoveredAreasArray = Array.from(this.fogOfWar.discoveredAreas).map(key => {
+                    const [x, z] = key.split(',').map(Number);
+                    return { x, y: z }; // Note: FogOfWar uses z coordinate, but minimap expects y
+                });
+                
+                this.hud.updateDiscoveredAreas(discoveredAreasArray);
+            }
         }
         
         this.checkItemCollection();
@@ -723,6 +909,7 @@ update() {
         this.checkTrapCollisions();
         this.checkPortalWin();
     }
+    
     // Simple global fog adjustment
     const flashlightActive = !!(this.gameManager && this.gameManager.flashlightActive);
     if (this.scene && this.scene.fog) {
@@ -762,6 +949,14 @@ update() {
     }
     if (this.noteUI.prompt) {
         this.noteUI.prompt.style.display = 'none';
+    }
+
+    // ⏸️ Clean up pause UI (doesn't affect game state)
+    if (this.pauseUI.button && document.body.contains(this.pauseUI.button)) {
+        document.body.removeChild(this.pauseUI.button);
+    }
+    if (this.pauseUI.overlay && document.body.contains(this.pauseUI.overlay)) {
+        document.body.removeChild(this.pauseUI.overlay);
     }
     
     // Clear arrays
@@ -897,6 +1092,81 @@ update() {
         if (!this.noteUI.overlay) return;
         this.noteUI.overlay.style.display = 'none';
         this.noteUI.isOpen = false;
+    }
+
+    // =========================
+    // ⏸️ Pause helpers (NEW)
+    // =========================
+    _buildPauseUI() {
+        // Overlay
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.inset = '0';
+        overlay.style.background = 'rgba(0,0,0,0.7)';
+        overlay.style.display = 'none';
+        overlay.style.zIndex = '9996';
+        overlay.style.pointerEvents = 'none';
+        overlay.style.backdropFilter = 'blur(1px)';
+
+        const label = document.createElement('div');
+        label.textContent = 'PAUSED';
+        label.style.position = 'absolute';
+        label.style.top = '50%';
+        label.style.left = '50%';
+        label.style.transform = 'translate(-50%, -50%)';
+        label.style.fontSize = '42px';
+        label.style.letterSpacing = '6px';
+        label.style.color = '#e5e5e5';
+        label.style.textShadow = '0 2px 18px rgba(0,0,0,0.8)';
+        overlay.appendChild(label);
+
+        document.body.appendChild(overlay);
+        this.pauseUI.overlay = overlay;
+
+    }
+
+    _bindPauseInput() {
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'p' || e.key === 'P') {
+                this._togglePause();
+            }
+        });
+    }
+
+    _togglePause() {
+        this._setPaused(!this.paused);
+    }
+
+    _setPaused(flag) {
+        this.paused = !!flag;
+
+        // stop/resume time
+        if (this.paused) {
+            if (this.clock && this.clock.running) this.clock.stop();
+        } else {
+            if (this.clock && !this.clock.running) {
+                this.clock.start();
+                this.clock.getDelta(); // clear first large delta
+            }
+        }
+
+        if (this.pauseUI.overlay) {
+            this.pauseUI.overlay.style.display = this.paused ? 'block' : 'none';
+        }
+        if (this.pauseUI.button) {
+            this.pauseUI.button.textContent = this.paused ? 'Resume' : 'Pause';
+        }
+        // Optional: damp ambience slightly while paused (no structural changes)
+        try {
+            if (this._ambience && this._ambience.isPlaying) {
+                const v = this.paused ? 0.15 : 0.35;
+                this._ambience.setVolume(v);
+            }
+        } catch (_) {}
+        // Optional: disable player input if your Player supports it
+        if (this.player && typeof this.player.setInputEnabled === 'function') {
+            this.player.setInputEnabled(!this.paused);
+        }
     }
 
  checkBoundaryViolations() {
@@ -1354,4 +1624,60 @@ playWhisperingSounds() {
         this.gameManager.audio.playWhisper();
     }
 }
+_applyShadows(enabled){
+  if (this.renderer) this.renderer.shadowMap.enabled = !!enabled;
+  // also toggle per-light shadow if you have them, e.g., this.dirLight.castShadow = enabled;
+}
+_applyFog(enabled){
+  if (enabled) {
+    if (!this.scene.fog) this.scene.fog = new THREE.Fog(0x0a0a0a, 10, 50);
+  } else {
+    this.scene.fog = null;
+  }
+}
+_applySkybox(enabled){
+  // keep background logic for future CubeTexture use
+  if (enabled && this._skyboxTexture) {
+    this.scene.background = this._skyboxTexture;
+  } else if (!enabled) {
+    this.scene.background = this._origBackground || new THREE.Color(0x0a0a0a);
+  }
+  // ✅ actually toggle mesh-based sky content
+  if (this._skyGroup) this._skyGroup.visible = !!enabled;
+}
+_applyBumpMaps(enabled){
+  this.scene.traverse(obj => {
+    const m = obj.material; if (!m) return;
+    const mats = Array.isArray(m) ? m : [m];
+    mats.forEach(mm => {
+      if (!this._origMaps.has(mm)) {
+        this._origMaps.set(mm, { normalMap: mm.normalMap || null, bumpMap: mm.bumpMap || null });
+      }
+      const orig = this._origMaps.get(mm);
+      mm.normalMap = enabled ? orig.normalMap : null;
+      mm.bumpMap   = enabled ? orig.bumpMap   : null;
+      mm.needsUpdate = true;
+    });
+  });
+}
+_applyAnisotropy(level){
+  const caps = this.renderer?.capabilities;
+  const max = caps?.getMaxAnisotropy ? caps.getMaxAnisotropy() : 16;
+  const aniso = Math.max(1, Math.min(max, Number(level)));
+  this.scene.traverse(obj => {
+    const m = obj.material; if (!m) return;
+    (Array.isArray(m)?m:[m]).forEach(mm=>{
+      const setA = t => { if (t) t.anisotropy = aniso; };
+      setA(mm.map); setA(mm.normalMap); setA(mm.bumpMap);
+      setA(mm.roughnessMap); setA(mm.metalnessMap); setA(mm.emissiveMap);
+    });
+  });
+}
+_applyResolutionScale(scale){
+  if (!this.renderer) return;
+  const s = Math.max(0.5, Math.min(2, Number(scale)));
+  this.renderer.setPixelRatio(s);
+  this.renderer.setSize(window.innerWidth, window.innerHeight, false);
+}
+
 }

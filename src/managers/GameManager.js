@@ -75,6 +75,9 @@ startGame(difficulty) {
 
     // Show intro overlay immediately
     this._showIntroOverlay();
+    setTimeout(() => {
+        this._showhelpOverlay();
+    }, 10000); // Show help overlay after 15 seconds
 
     // Arm audio start so it begins right after the first user gesture (click/key)
     this._armUserGestureForAudioStart();
@@ -357,6 +360,11 @@ returnToMenu() {
     _showIntroOverlay() {
         // Uses LoreManager's built-in intro text
         this.lore.showIntro();
+    }
+
+        // Show the short intro text overlay
+    _showhelpOverlay() {
+        this.lore.showhelp();
     }
 
     // Public helper you can call from your GameScene when a note is detected/picked

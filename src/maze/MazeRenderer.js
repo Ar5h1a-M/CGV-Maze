@@ -14,19 +14,19 @@ export class MazeRenderer {
     
 loadTextures() {
         // 👇 EDIT THESE FILENAMES ONLY to swap textures
-        const wallTexture = this.textureLoader.load('/textures/wall_horror.jpg');
-        const groundTexture = this.textureLoader.load('/textures/ground_horror.jpg');
+        const wallTexture = this.textureLoader.load('./textures/wall_horror.jpg');
+        const groundTexture = this.textureLoader.load('./textures/ground_horror.jpg');
         
         // Load bump/normal maps with error handling
         const wallBump = this.textureLoader.load(
-            '/textures/wall_bump2.jpg',
+            './textures/wall_bump2.jpg',
             (texture) => console.log('✅ Wall bump map loaded'),
             undefined,
             (err) => console.warn('⚠️ Wall bump map failed to load:', err)
         );
         
         const groundBump = this.textureLoader.load(
-            '/textures/ground_bump2.jpg',
+            './textures/ground_bump2.jpg',
             (texture) => console.log('✅ Ground bump map loaded'),
             undefined,
             (err) => console.warn('⚠️ Ground bump map failed to load:', err)
@@ -45,6 +45,11 @@ loadTextures() {
 
         groundBump.wrapS = groundBump.wrapT = THREE.RepeatWrapping;
         groundBump.repeat.set(8, 8);
+
+        wallTexture.colorSpace = THREE.SRGBColorSpace;
+        groundTexture.colorSpace = THREE.SRGBColorSpace;
+        wallBump.colorSpace = THREE.SRGBColorSpace;
+        groundBump.colorSpace = THREE.SRGBColorSpace;
 
         // Shared materials with enhanced bump settings
         this.materials = {

@@ -12,6 +12,10 @@ export class HUD {
         this.discoveredAreas = new Set();
         this.cellSize = 0;
 
+        // NEW: Track fog opacity for each cell
+        this.fogOpacity = new Map(); // Stores opacity values for each "x,y" cell
+        this.fogFadeSpeed = 0.05; // How fast fog fades (higher = faster)
+
         // Help system
         this.helpContainer = null;
         this.helpContentArea = null;
@@ -284,6 +288,7 @@ export class HUD {
                             <li>V → Change Perspective</li>
                             <li>1-5 → Select Inventory Slot</li>
                             <li>F → Toggle Flashlight</li>
+                            <li>P → Toggle Pause</li>
                         </ul>
                     </div>
                 </div>
@@ -351,7 +356,6 @@ export class HUD {
         }
     }
     
-    // ... REST OF YOUR EXISTING METHODS REMAIN EXACTLY THE SAME ...
     createHealthBar() {
         const healthContainer = document.createElement('div');
         healthContainer.style.cssText = `
@@ -615,22 +619,17 @@ export class HUD {
         
         const flashlightIndicator = document.getElementById('flashlight-indicator');
         if (flashlightIndicator) {
-         
             if (!this.gameManager.hasFlashlight) {
-            flashlightIndicator.style.display = 'none';
-            return;
-        }
+                flashlightIndicator.style.display = 'none';
+                return;
+            }
 
-      
-        flashlightIndicator.style.display = 'block';
-
-        
-        flashlightIndicator.textContent = this.gameManager.flashlightActive ? '🔦 ON' : '🔦 OFF';
-        flashlightIndicator.style.opacity = this.gameManager.flashlightActive ? '1' : '0.4';
+            flashlightIndicator.style.display = 'block';
+            flashlightIndicator.textContent = this.gameManager.flashlightActive ? '🔦 ON' : '🔦 OFF';
+            flashlightIndicator.style.opacity = this.gameManager.flashlightActive ? '1' : '0.4';
         }
-        }
+    }
 
-    // ... rest of your existing methods (setMazeData, calculateCellSize, updateMinimap, etc.) ...
     setMazeData(mazeData) {
         this.mazeData = {
             grid: mazeData.grid,
@@ -648,11 +647,29 @@ export class HUD {
         this.cellSize = 130 / maxDimension;
     }
 
+    // UPDATED: Track fog opacity for gradual fade
     updateDiscoveredAreas(areas) {
         if (!areas) return;
-        this.discoveredAreas = new Set(areas.map(area => `${area.x},${area.y}`));
+        
+        // Convert areas to Set
+        const newDiscoveredAreas = new Set(areas.map(area => `${area.x},${area.y}`));
+        
+        // For newly discovered areas, start fading the fog
+        newDiscoveredAreas.forEach(key => {
+            if (!this.discoveredAreas.has(key)) {
+                // Newly discovered - set initial opacity to 1 (fully fogged)
+                this.fogOpacity.set(key, 1.0);
+            } else {
+                // Already discovered - gradually fade the fog
+                const currentOpacity = this.fogOpacity.get(key) || 0;
+                this.fogOpacity.set(key, Math.max(0, currentOpacity - this.fogFadeSpeed));
+            }
+        });
+        
+        this.discoveredAreas = newDiscoveredAreas;
     }
 
+    // UPDATED: Render fog overlay on minimap
     updateMinimap(playerPosition, playerRotation) {
         if (!this.mazeData || !this.minimapCtx) return;
 
@@ -687,14 +704,24 @@ export class HUD {
                 const drawY = centerY + rotatedY * this.cellSize;
                 
                 if (this.isInMinimapBounds(drawX, drawY)) {
+                    // Draw base terrain
                     if (this.mazeData.grid[y][x] === 1) {
-                        ctx.fillStyle = 'rgba(139, 0, 0, 0.8)';
+                        ctx.fillStyle = 'rgba(139, 0, 0, 0.8)'; // Wall
                         ctx.fillRect(drawX - this.cellSize/2, drawY - this.cellSize/2, this.cellSize, this.cellSize);
                     } else if (x === this.mazeData.end.x && y === this.mazeData.end.y) {
-                        ctx.fillStyle = 'rgba(0, 255, 0, 0.8)';
+                        ctx.fillStyle = 'rgba(0, 255, 0, 0.8)'; // Exit
                         ctx.fillRect(drawX - this.cellSize/2, drawY - this.cellSize/2, this.cellSize, this.cellSize);
                     } else {
-                        ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
+                        ctx.fillStyle = 'rgba(100, 100, 100, 0.5)'; // Path
+                        ctx.fillRect(drawX - this.cellSize/2, drawY - this.cellSize/2, this.cellSize, this.cellSize);
+                    }
+                    
+                    // NEW: Draw fog overlay with fade effect
+                    const fogKey = `${x},${y}`;
+                    const fogOpacity = this.fogOpacity.get(fogKey) || 0;
+                    
+                    if (fogOpacity > 0) {
+                        ctx.fillStyle = `rgba(0, 0, 0, ${fogOpacity * 0.8})`;
                         ctx.fillRect(drawX - this.cellSize/2, drawY - this.cellSize/2, this.cellSize, this.cellSize);
                     }
                 }

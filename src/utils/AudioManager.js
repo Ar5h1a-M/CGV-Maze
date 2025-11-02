@@ -10,6 +10,8 @@ export class AudioManager {
     this.audioLoader = new THREE.AudioLoader();
     this.ambience = new THREE.Audio(this.listener);
     this.noteBlip = null; // optional HTML audio for UI feedback
+
+    this.audioLoader.setMimeType('audio/mpeg');
   }
 
   loadAndPlayAmbience(path = '/audio/ambience_spooky.mp3', volume = 0.35) {
